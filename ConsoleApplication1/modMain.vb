@@ -9,7 +9,6 @@ Imports System.Globalization
 Imports System.IO
 
 'Implement a simple "undo" by having the last 5 objects a user built stored in the user array
-
 Module modMain
     Dim ObjectDatPath As String = Path.Combine(Environment.CurrentDirectory, "vpstats_objects.dat")
     Dim StatsDatPath As String = Path.Combine(Environment.CurrentDirectory, "vpstats.dat")
@@ -18,13 +17,10 @@ Module modMain
 
     Public objWriter As System.IO.TextWriter = New System.IO.StreamWriter(ObjectDatPath, True) With {.AutoFlush = True}
     Public objWriterChat As System.IO.TextWriter = New System.IO.StreamWriter(ChatLogPath, True) With {.AutoFlush = True}
+
     Public vp As VpNet.Core.Instance
     ' Dim LastMarker As Short
     Dim ProgramIsClosing As Boolean
-    Dim Timer1 As New System.Timers.Timer
-    Dim Timer2 As New System.Timers.Timer
-    Dim Timer3 As New System.Timers.Timer
-    Dim ReconnectTimer As New System.Timers.Timer
     Dim SpinnyID As Integer
     Dim SpinnyD As Boolean
     Dim VpConnected As Boolean 'TODO: Attempt to fix crashing bug
@@ -32,24 +28,6 @@ Module modMain
 
     Sub Main()
         Try
-            'Initialise timers
-            Timer1.AutoReset = True
-            Timer1.Interval = 1000
-            AddHandler Timer1.Elapsed, AddressOf Timer1_Tick
-
-            ' Timer2.AutoReset = True
-            ' Timer2.Interval = 300
-            ' AddHandler Timer2.Elapsed, AddressOf Timer2_Tick
-
-            ReconnectTimer.AutoReset = True
-            ReconnectTimer.Interval = 25000
-            AddHandler ReconnectTimer.Elapsed, AddressOf ReconnectTimer_Tick
-
-            Timer3.AutoReset = True
-            Timer3.Interval = 10000
-            Timer3.Enabled = False
-            AddHandler Timer3.Elapsed, AddressOf Timer3_Tick
-
             'Load configuration from file
             ConfigINI.Load(ConfigPath)
 
@@ -59,15 +37,18 @@ Module modMain
             Bot.CitName = ConfigINI.GetKeyValue("Bot", "CitName")
             Bot.CitPass = ConfigINI.GetKeyValue("Bot", "CitPass")
             Bot.WorldName = ConfigINI.GetKeyValue("Bot", "World")
+
             Options.EnableMapUpdates = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableMapUpdates"))
             Options.EnableObjectLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableObjectLogging"))
             Options.EnableChatLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableChatLogging"))
             Options.EnableStatisticsLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableStatisticsLogging"))
             Options.EnableWikiUpdates = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableWikiUpdates"))
+
             Wiki.CitListLastUpdate = DateTime.Parse(ConfigINI.GetKeyValue("Wiki", "CitListLastUpdate"), New CultureInfo("en-GB"))
             Wiki.Username = ConfigINI.GetKeyValue("Wiki", "Username")
             Wiki.Password = ConfigINI.GetKeyValue("Wiki", "Password")
             VPStats.LastSave = DateTime.Parse(ConfigINI.GetKeyValue("Stats", "LastSave"), New CultureInfo("en-GB"))
+
             Dim RetryCount As Byte = 0
             ' VPStats.LastSave = DateTime.UtcNow
             info("EnableWikiUpdates = " & Options.EnableWikiUpdates)
@@ -96,11 +77,6 @@ RetryLogin:
 
                 'TODO: Add "sleep commands" here to stop 100% cpu usage by Mono
                 'TODO: Next look into the SDK being the problem!
-                'vp.Wait(5)
-                If EnableMap = True And Timer1.Enabled = False Then
-                    info("Timer was disabled!")
-                    Timer1.Enabled = True
-                End If
             Loop
 
             If Options.EnableStatisticsLogging = True Then SaveStatisticsLog()
@@ -116,7 +92,6 @@ RetryLogin:
         ProgramIsClosing = True
 
         info("Saving logs...")
-        Timer3.Stop()
         objWriter.Close()
         objWriterChat.Close()
 
@@ -147,9 +122,6 @@ RetryLogin:
 
         Try
             vp = New VpNet.Core.Instance()
-            Timer1.Start()
-
-            vp.Wait(1)
 
             AddHandler vp.EventAvatarAdd, AddressOf vpnet_EventAvatarAdd
             AddHandler vp.EventAvatarChange, AddressOf vpnet_EventAvatarChange
@@ -173,7 +145,6 @@ RepeatLogin:
                 vp.Wait(1000)
             Catch ex As Exception
                 info(ex.Message)
-                Timer1.Stop()
                 Return False
             End Try
 
@@ -193,11 +164,8 @@ RepeatLogin:
 
         Catch ex As Exception
             info(ex.Message)
-            Timer1.Stop()
             Return False
         End Try
-
-        Timer1.Start()
 
         Try
             'Query cells
@@ -221,27 +189,25 @@ RepeatLogin:
 
         Catch ex As Exception
             info(ex.Message)
-            Timer1.Stop()
             Return False
         End Try
         If Options.EnableMapUpdates = True Then EnableMap = True
-        Timer3.Start()
 
-
-        If CreateMarkers() = False Then EnableMap = False : Timer3.Stop() : Timer1.Stop() : Return False 'Attempt to create marker objects
+        'Attempt to create marker objects
+        If CreateMarkers() = False Then
+            EnableMap = False
+            Return False
+        End If
 
         info("Bot is now active. Use commands in-world to control.")
         Return True
     End Function
 
     Private Sub vpnet_EventAvatarChat(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.EventData.Chat)
-        'TODO: Remove; this is to test event being received and that wait timer is still going
         Dim ChatMessage As String = LTrim(eventData.Message)
-        If ChatMessage = "u:test123abcd" Then info(Timer1.Enabled) : vpSay(Timer1.Enabled)
 
         If ProgramIsClosing = True Then Exit Sub
         If VpConnected = False Then Exit Sub
-
 
         If eventData.ChatType = 1 Then 'Log console messages 
             If eventData.Username = "" Then
@@ -345,7 +311,7 @@ RepeatLogin:
         QueryData(QueryData.GetUpperBound(0)) = objectData
         QueryData(QueryData.GetUpperBound(0)).ReferenceNumber = -1
 
-        If objectData.Action.Contains("name spinny2") Then SpinnyID = QueryData.GetUpperBound(0) : Timer3.Start() : Console.WriteLine("started")
+        If objectData.Action.Contains("name spinny2") Then SpinnyID = QueryData.GetUpperBound(0)
     End Sub
 
     Private Sub vpnet_EventQueryCellEnd(ByVal sender As VpNet.Core.Instance, ByVal CellX As Integer, ByVal CellZ As Integer)
@@ -448,10 +414,7 @@ CatPrivilege:       'Except cat bot (for testing)
                     ClearUserData(ib)
                 Next
 
-                Timer3.Enabled = False
                 EnableMap = False
-                Timer1.Enabled = False
-                ReconnectTimer.Enabled = True
             End Try
             'Store old position
             Users(i).oldX = Users(i).X
@@ -495,6 +458,7 @@ FoundSpace:
             Bot.Owner = Users(i).Session
             info("Bot owner detected. Session: " & Bot.Owner)
         End If
+
         ChatLogAppend("[" & DateTime.UtcNow.ToString(New CultureInfo("en-GB")) & "] ENTERS: " & eventData.Name & ", " & eventData.Id & ", " & eventData.Session)
 
         CreateMarkers()
@@ -751,10 +715,7 @@ FoundID:
             ClearUserData(i)
         Next
 
-        Timer3.Enabled = False
         EnableMap = False
-        Timer1.Enabled = False
-        ReconnectTimer.Enabled = True
     End Sub
 
     Private Sub vpnet_EventUniverseDisconnect(ByVal sender As VpNet.Core.Instance)
@@ -768,39 +729,8 @@ FoundID:
         For i As Integer = 1 To Users.GetUpperBound(0)
             ClearUserData(i)
         Next
-        Timer3.Enabled = False
-        EnableMap = False
-        Timer1.Enabled = False
-        ReconnectTimer.Enabled = True
-    End Sub
-    Private Sub Timer1_Tick(ByVal sender As Object, ByVal e As System.Timers.ElapsedEventArgs)
-        '  On Error Resume Next
-        Try
-            vp.Wait(0)
-        Catch ex As Exception
-            vp.Wait(1)
-            'TODO: Figure out why this causes some kind of error occasionally
-            info("Error: vp_wait, " & ex.Message)
-        End Try
-        testTicks += 1
-        If testTicks >= 1200 Then info("Timer still ticking...") : testTicks = 0
-    End Sub
-    Private Sub ReconnectTimer_Tick(ByVal sender As System.Object, ByVal e As System.EventArgs)
-        If LoginBot() = True Then
-            'Login success
-            ReconnectTimer.Stop()
-        Else
-            Try
-                'Clear up the login to avoid errors when trying again
-                vp.Dispose()
-            Catch ex As Exception
-            End Try
-        End If
-    End Sub
 
-    Private Sub Timer3_Tick(ByVal sender As System.Object, ByVal e As System.EventArgs)
-        objWriter.Flush()
-        If Options.EnableChatLogging = True Then objWriterChat.Flush()
+        EnableMap = False
     End Sub
 
     Private Sub vpnet_EventUserAttributes(ByVal sender As VpNet.Core.Instance, ByVal userAttributes As VpNet.Core.Structs.UserAttributes)
