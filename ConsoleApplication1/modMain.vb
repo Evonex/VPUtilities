@@ -343,7 +343,7 @@ CatPrivilege:       'Except cat bot (for testing)
                     markerObject.Action = User.MarkerObjectAction.Replace("{x}", 0).Replace("{z}", 0).Replace("{t}", 0).Replace("{r}", 0).Replace("{rt}", 0)
                     markerObject.Model = "cyfigure.rwx"
                     markerObject.ReferenceNumber = ref
-                    'Console.WriteLine(user.Name & ": " & i)
+                    ref += 1
                     Try
                         vp.AddObject(markerObject)
                         info("Added marker for " & User.Name)
