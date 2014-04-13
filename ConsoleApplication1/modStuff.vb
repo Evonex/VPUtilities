@@ -38,35 +38,36 @@ Module modStuff
         Dim Key As String
         Dim Value As String
     End Structure
-    Structure structUser
-        Dim Session As Integer
-        Dim Name As String
-        Dim Id As Integer
-        Dim AvatarType As Integer
-        Dim X As Single
-        Dim Y As Single
-        Dim Z As Single
-        Dim YAW As Single
-        Dim oldX As Single
-        Dim oldY As Single
-        Dim oldZ As Single
-        Dim oldYAW As Single
-        Dim Pitch As Single
-        Dim ListIndex As Integer 'User Listbox Index
-        Dim MarkerObjectID As Integer
-        Dim MarkerObjectAction As String
-        Dim MirrorObjectData As VpNet.Core.Structs.VpObject
-        Dim MovedSinceLastMarkerUpdate As Boolean
-        Dim MapEnabled As Boolean
-        Dim MapClickTime As DateTime
-        Dim LastActive As DateTime
-        Dim AvatarFrozen As Boolean
-        Dim statsActiveInLastHour As Boolean
-        Dim Online As Boolean
+    ' Structures should not be used for mutable types (that is, if an object of the
+    ' type's members get modified)
+    Class structUser
+        Public Session As Integer
+        Public Name As String
+        Public Id As Integer
+        Public AvatarType As Integer
+        Public X As Single
+        Public Y As Single
+        Public Z As Single
+        Public YAW As Single
+        Public oldX As Single
+        Public oldY As Single
+        Public oldZ As Single
+        Public oldYAW As Single
+        Public Pitch As Single
+        Public ListIndex As Integer 'User Listbox Index
+        Public MarkerObjectID As Integer
+        Public MarkerObjectAction As String
+        Public MirrorObjectData As VpNet.Core.Structs.VpObject
+        Public MovedSinceLastMarkerUpdate As Boolean
+        Public MapClickTime As DateTime
+        Public LastActive As DateTime
+        Public AvatarFrozen As Boolean
+        Public statsActiveInLastHour As Boolean
+        Public Online As Boolean
         'format: Datetime,hour | activenumber | totalnumber,hour | activenumber | totalnumber,hour | activenumber | totalnumber, [..repeats until next day, POSSIBLE to have each date on a newline]
         'csv, with | separation (allows extra values to be added later on, for each hour
         'example: 23/04/2013,1|3|5,2|4|5,3|1|4,4|2|3,5|2|2,5|2|0,6|2|0 [new line for each day]
-    End Structure
+    End Class
     Structure structStatistics
         Dim LastSave As DateTime
         Dim LastHour As DateTime
@@ -75,8 +76,6 @@ Module modStuff
     End Structure
     Structure structWiki
         Dim CitListLastUpdate As DateTime
-        Dim Username As String
-        Dim Password As String
     End Structure
     Public ConfigINI As New IniFile
 
@@ -84,7 +83,7 @@ Module modStuff
     Public Marker(31) As Integer 'Contains the querydata array index of each marker
     Public Bot As structBot
     Public Options As structOptions
-    Public User() As structUser
+    Public Users() As structUser
     Public VPStats As structStatistics
     Public Wiki As structWiki
     'Public World() As structWorld
@@ -121,8 +120,8 @@ Module modStuff
         'Finds a users index in the user array by name
 
         'World specific
-        For i = 1 To User.GetUpperBound(0)
-            If User(i).Session = UserSession Then GoTo FoundUser
+        For i = 1 To Users.GetUpperBound(0)
+            If Users(i).Session = UserSession Then GoTo FoundUser
         Next
         'failed
         Return 0
@@ -136,8 +135,8 @@ FoundUser:
         'Finds a users index in the user array by name
 
         'World specific
-        For i = 1 To User.GetUpperBound(0)
-            If User(i).Name.ToLower = UserName.ToLower Then GoTo FoundUser
+        For i = 1 To Users.GetUpperBound(0)
+            If Users(i).Name.ToLower = UserName.ToLower Then GoTo FoundUser
         Next
         'failed
         Return 0
