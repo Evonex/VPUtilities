@@ -99,30 +99,6 @@ RetryLogin:
                     If DateTime.UtcNow.Day > VPStats.LastSave.Day Then VPStats.LastSave = DateTime.UtcNow : SaveStatisticsLog()
                 End If
 
-                'Input console commands
-                If True = False Then 'Quick way to COMMENT OUT everything here
-                    Dim input As String = ""
-                    ' Console.Write(vbBack & "> " & Chr(Console.Read))
-                    Console.Write("> ")
-                    Dim curTime As DateTime = DateTime.UtcNow
-                    input = Console.ReadLine
-                    Select Case input.ToLower
-                        Case "exit"
-                            Exit Do
-                        Case "updatecitlist"
-                            Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList() 'Update citizen list manually
-                        Case "arraylength"
-                            Console.WriteLine("User = " & User.Length)
-                            Console.WriteLine("QueryData = " & QueryData.Length)
-                            Console.WriteLine("Marker = " & Marker.Length)
-                        Case "showoptions"
-                            Console.WriteLine("EnableWikiUpdates = " & Options.EnableWikiUpdates)
-                            Console.WriteLine("EnableMapUpdates = " & Options.EnableMapUpdates)
-                            Console.WriteLine("EnableObjectLogging = " & Options.EnableObjectLogging)
-                        Case Else
-                            Console.WriteLine("Command not recognised.")
-                    End Select
-                End If
                 'TODO: Add "sleep commands" here to stop 100% cpu usage by Mono
                 'TODO: Next look into the SDK being the problem!
                 'vp.Wait(5)
