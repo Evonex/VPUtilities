@@ -42,6 +42,7 @@ Module modStuff
         Public oldYAW As Single
         Public Pitch As Single
         Public ListIndex As Integer 'User Listbox Index
+        Public MarkerPending As Boolean
         Public MarkerObjectID As Integer
         Public MarkerObjectAction As String
         Public MirrorObjectData As VpNet.Core.Structs.VpObject
@@ -50,7 +51,6 @@ Module modStuff
         Public LastActive As DateTime
         Public AvatarFrozen As Boolean
         Public statsActiveInLastHour As Boolean
-        Public Online As Boolean
         'format: Datetime,hour | activenumber | totalnumber,hour | activenumber | totalnumber,hour | activenumber | totalnumber, [..repeats until next day, POSSIBLE to have each date on a newline]
         'csv, with | separation (allows extra values to be added later on, for each hour
         'example: 23/04/2013,1|3|5,2|4|5,3|1|4,4|2|3,5|2|2,5|2|0,6|2|0 [new line for each day]
@@ -112,19 +112,12 @@ Module modStuff
         Return 0
     End Function
 
-    Function FindUser(ByVal UserSession As Long) As Integer
-        Dim i As Integer
-        'Finds a users index in the user array by name
-
-        'World specific
-        For i = 1 To Users.GetUpperBound(0)
-            If Users(i).Session = UserSession Then GoTo FoundUser
+    Function FindUser(ByVal UserSession As Long) As objUser
+        For Each User In Users
+            If User.Session = UserSession Then Return User
         Next
-        'failed
-        Return 0
-        'success
-FoundUser:
-        Return i
+
+        Return Nothing
     End Function
 
     Function FindUserByName(ByVal UserName As String) As Integer
@@ -144,7 +137,7 @@ FoundUser:
 
 
     Sub vpSay(ByVal Message As String, Optional ByVal Session As Integer = 0)
-        vp.ConsoleMessage(Session, "", "» " & Message, VpNet.Core.EventData.VPTextEffect.TextEffectItalic, 255, 0, 0)
+        Bot.Instance.ConsoleMessage(Session, "", "» " & Message, VpNet.Core.EventData.VPTextEffect.TextEffectItalic, 255, 0, 0)
     End Sub
 
     Public Function DateTimeToUnixTimeStamp(ByVal currDate As DateTime) As Long
