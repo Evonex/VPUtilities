@@ -76,6 +76,8 @@ Module modStuff
     End Structure
     Structure structWiki
         Dim CitListLastUpdate As DateTime
+        Dim Username As String
+        Dim Password As String
     End Structure
     Public ConfigINI As New IniFile
 
