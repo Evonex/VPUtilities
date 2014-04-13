@@ -1,0 +1,24 @@
+Bot is now active. Please type 'exit' to close.
+World connection lost. Attempting to reconnect...
+Logging into universe...
+Entering Blizzard...
+Unknown message type: 0
+Unknown message type: 0
+Unknown message type: 2
+
+Unhandled Exception: Added marker for CompuHacker
+Added marker for Edwin
+Bot is now active. Please type 'exit' to close.
+System.AccessViolationException: Attempted to read or write protected memory. This is often an indication that other memory is corrupt.
+   at VpNet.NativeApi.Functions.vp_wait(IntPtr instance, Int32 time)
+   at VpNet.Core.Instance.Wait(Int32 milliseconds)
+   at VPUtilities.modMain.Timer1_Tick(Object sender, ElapsedEventArgs e)
+   at System.Timers.Timer.MyTimerCallback(Object state)
+   at System.Threading.TimerQueueTimer.CallCallbackInContext(Object state)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state, Boolean preserveSyncCtx
+)
+   at System.Threading.ExecutionContext.Run(ExecutionContext executionContext, ContextCallback callback, Object state, Boolean preserveSyncCtx)
+   at System.Threading.TimerQueueTimer.CallCallback()
+   at System.Threading.TimerQueueTimer.Fire()
+   at System.Threading.TimerQueue.FireNextTimers()
+   at System.Threading.TimerQueue.AppDomainTimerCallback()
