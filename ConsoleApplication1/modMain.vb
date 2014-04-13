@@ -25,7 +25,7 @@ Module modMain
     Dim Exiting As Boolean
     Dim SpinnyID As Integer
     Dim SpinnyD As Boolean
-    Dim EnableMap As Boolean 'Used to replace Timer2, which was for map updates. Indicates whether map marker updates are enabled.
+    Dim UpdatingMap As Boolean 'Used to replace Timer2, which was for map updates. Indicates whether map marker updates are enabled.
 
     Sub Main()
         Try
@@ -189,11 +189,11 @@ Module modMain
             End If
         Next
 
-        If Options.EnableMapUpdates Then EnableMap = True
+        If Options.EnableMapUpdates Then UpdatingMap = True
 
         'Attempt to create marker objects
         If CreateMarkers() = False Then
-            EnableMap = False
+            UpdatingMap = False
             Return False
         End If
 
@@ -316,48 +316,41 @@ Module modMain
 
     Function CreateMarkers() As Boolean
 
-        If EnableMap = False Then Return True 'Wait until all avatars have entered first - to avoid duplicates
-        If Options.EnableMapUpdates = False Then Return False
+        If Not UpdatingMap Then Return True 'Wait until all avatars have entered first - to avoid duplicates
+        If Not Options.EnableMapUpdates Then Return False
 
         Randomize()
 
-        'Find avatars which have no marker created and create them
         Dim ref As Integer
         For Each User In Users
-            If User.Session <> 0 And User.Name <> "" And User.MarkerObjectID <= 0 Then
-                If User.Name = "[Cat]" Then GoTo CatPrivilege
-                If User.Name.Substring(0, 1) <> "[" Then 'Do not create markers for bots
-CatPrivilege:       'Except cat bot (for testing)
-                    'Create a marker for all of the users
+            ' Skip users that already have markers
+            If User.MarkerObjectID > 0 Then Continue For
 
-                    User.MarkerObjectAction = "create solid no,color " & Hex(Int(Rnd() * 255)).PadRight(2, "0") & Hex(Int(Rnd() * 255)).PadRight(2, "0") & Hex(Int(Rnd() * 255)).PadRight(2, "0") & ",move {x} 0 {z} time={t} wait=9e9,rotate {r} time={rt} wait=9e9 nosync,name avmarker"
+            ' No markers for bots, except for [Cat]
+            If User.Name.Substring(0, 1) = "[" And User.Name <> "[Cat]" Then Continue For
 
-                    Dim markerObject As New VpNet.Core.Structs.VpObject
-                    markerObject.Position = New VpNet.Core.Structs.Vector3(250, 0.014, -250)
-                    markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, 0, 0)
-                    markerObject.Angle = Single.PositiveInfinity
-                    markerObject.Description = User.Name
-                    markerObject.Action = User.MarkerObjectAction.Replace("{x}", 0).Replace("{z}", 0).Replace("{t}", 0).Replace("{r}", 0).Replace("{rt}", 0)
-                    markerObject.Model = "cyfigure.rwx"
-                    markerObject.ReferenceNumber = ref
-                    ref += 1
-                    Try
-                        vp.AddObject(markerObject)
-                        info("Added marker for " & User.Name)
-                    Catch ex As Exception
-                        info(ex.Message)
-                        Return False
-                    End Try
-                End If
-            End If
+            User.MarkerObjectAction = "create solid no,color " & Hex(Int(Rnd() * 255)).PadRight(2, "0") & Hex(Int(Rnd() * 255)).PadRight(2, "0") & Hex(Int(Rnd() * 255)).PadRight(2, "0") & ",move {x} 0 {z} time={t} wait=9e9,rotate {r} time={rt} wait=9e9 nosync,name avmarker"
+
+            Dim markerObject As New VpNet.Core.Structs.VpObject
+            markerObject.Position = New VpNet.Core.Structs.Vector3(250, 0.014, -250)
+            markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, 0, 0)
+            markerObject.Angle = Single.PositiveInfinity
+            markerObject.Description = User.Name
+            markerObject.Action = User.MarkerObjectAction.Replace("{x}", 0).Replace("{z}", 0).Replace("{t}", 0).Replace("{r}", 0).Replace("{rt}", 0)
+            markerObject.Model = "cyfigure.rwx"
+            markerObject.ReferenceNumber = ref
+            ref += 1
+
+            Bot.Instance.AddObject(markerObject)
+            info("Queued add marker for " & User.Name)
         Next
+
         'All markers created
         Return True
-
     End Function
 
     Sub UpdateMarker(ByRef User As objUser) 'Updates the map marker for an avatar
-        If EnableMap = False Then Return
+        If UpdatingMap = False Then Return
 
         'If nessecary, update map marker location
         If Not User.MovedSinceLastMarkerUpdate Or User.Session = 0 Or User.MarkerObjectID <= 0 Then Return
@@ -653,7 +646,7 @@ FoundID:
 
     Private Sub vpnet_EventWorldDisconnect(ByVal sender As VpNet.Core.Instance)
         VpConnected = False
-        If EnableMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
+        If UpdatingMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
         info("World connection lost. Attempting to reconnect...")
         On Error Resume Next
 
@@ -663,12 +656,12 @@ FoundID:
             ClearUserData(i)
         Next
 
-        EnableMap = False
+        UpdatingMap = False
     End Sub
 
     Private Sub vpnet_EventUniverseDisconnect(ByVal sender As VpNet.Core.Instance)
         VpConnected = False
-        If EnableMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
+        If UpdatingMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
         info("Universe connection lost. Attempting to reconnect...")
         Try
             vp.Dispose()
@@ -678,7 +671,7 @@ FoundID:
             ClearUserData(i)
         Next
 
-        EnableMap = False
+        UpdatingMap = False
     End Sub
 
     Private Sub vpnet_EventUserAttributes(ByVal sender As VpNet.Core.Instance, ByVal userAttributes As VpNet.Core.Structs.UserAttributes)
