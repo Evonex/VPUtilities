@@ -2,45 +2,27 @@ Imports System.Globalization
 
 Module modStuff
 
-    Structure structBot
-        Dim LoginName As String
-        Dim UniHost As String
-        Dim UniPort As Integer
-        Dim CitName As String
-        Dim CitPass As String
-        Dim WorldName As String
-        'Dim ChatPath As String
-        Dim GreetUsers As Boolean
-        Dim MyX As Single
-        Dim MyY As Single
-        Dim MyZ As Single
-        Dim MyYAW As Single
-        'FollowDistance
-        Dim EnterMessage As String
-        Dim ExitMessage As String
-        Dim EnterTime As DateTime
-        Dim Owner As Integer
-        ' Dim Connected As Boolean
-    End Structure
-    Structure structOptions
-        Dim EnableStatisticsLogging As Boolean
-        Dim EnableObjectLogging As Boolean
-        Dim EnableChatLogging As Boolean
-        Dim EnableMapUpdates As Boolean
-        Dim EnableWikiUpdates As Boolean
-    End Structure
-    Structure structWorld
-        Dim Name As String
-        Dim UserCount As Short
-        Dim State As Short
-    End Structure
-    Structure structWorldAttribs
-        Dim Key As String
-        Dim Value As String
-    End Structure
-    ' Structures should not be used for mutable types (that is, if an object of the
-    ' type's members get modified)
-    Class structUser
+    Class objBot
+        Public LoginName As String
+        Public UniHost As String
+        Public UniPort As Integer
+        Public CitName As String
+        Public CitPass As String
+        Public WorldName As String
+        ' Public ChatPath As String
+        Public GreetUsers As Boolean
+        Public MyX As Single
+        Public MyY As Single
+        Public MyZ As Single
+        Public MyYAW As Single
+        Public lowDistance
+        Public EnterMessage As String
+        Public ExitMessage As String
+        Public EnterTime As DateTime
+        Public Owner As Integer
+        ' Public Connected As Boolean
+    End Class
+    Class objUser
         Public Session As Integer
         Public Name As String
         Public Id As Integer
@@ -68,6 +50,22 @@ Module modStuff
         'csv, with | separation (allows extra values to be added later on, for each hour
         'example: 23/04/2013,1|3|5,2|4|5,3|1|4,4|2|3,5|2|2,5|2|0,6|2|0 [new line for each day]
     End Class
+    Structure structOptions
+        Dim EnableStatisticsLogging As Boolean
+        Dim EnableObjectLogging As Boolean
+        Dim EnableChatLogging As Boolean
+        Dim EnableMapUpdates As Boolean
+        Dim EnableWikiUpdates As Boolean
+    End Structure
+    Structure structWorld
+        Dim Name As String
+        Dim UserCount As Short
+        Dim State As Short
+    End Structure
+    Structure structWorldAttribs
+        Dim Key As String
+        Dim Value As String
+    End Structure
     Structure structStatistics
         Dim LastSave As DateTime
         Dim LastHour As DateTime
@@ -83,9 +81,9 @@ Module modStuff
 
     Dim LastWriteLine As String
     Public Marker(31) As Integer 'Contains the querydata array index of each marker
-    Public Bot As structBot
+    Public Bot As objBot
+    Public Users() As objUser
     Public Options As structOptions
-    Public Users() As structUser
     Public VPStats As structStatistics
     Public Wiki As structWiki
     'Public World() As structWorld
