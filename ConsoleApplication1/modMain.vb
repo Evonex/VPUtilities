@@ -2,7 +2,6 @@ Imports DotNetWikiBot
 Imports VpNet
 Imports VpNet.Core
 Imports VpNet.Core.Structs
-'Imports VpNet.Core.EventData
 Imports VpNet.NativeApi
 Imports System.Runtime.InteropServices
 Imports System
@@ -12,17 +11,13 @@ Imports System.IO
 'Implement a simple "undo" by having the last 5 objects a user built stored in the user array
 
 Module modMain
-    ' ROY: Path.Combine is safer when figuring out a combined path. Additionally,
-    ' Environment.CurrentDirectory is a shorter alternative to using AppDomain.etc
     Dim ObjectDatPath As String = Path.Combine(Environment.CurrentDirectory, "vpstats_objects.dat")
     Dim StatsDatPath As String = Path.Combine(Environment.CurrentDirectory, "vpstats.dat")
     Dim ChatLogPath As String = Path.Combine(Environment.CurrentDirectory, "chat.txt")
     Dim ConfigPath As String = Path.Combine(Environment.CurrentDirectory, "Config.ini")
 
-    ' ROY: Added AutoFlush initializer property to make StreamWriter auto-flush
-    Dim objWriter As System.IO.TextWriter = New System.IO.StreamWriter(ObjectDatPath, True) With {.AutoFlush = True}
-    Dim objWriterChat As System.IO.TextWriter = New System.IO.StreamWriter(ChatLogPath, True) With {.AutoFlush = True}
-    'Inherits Bot
+    Public objWriter As System.IO.TextWriter = New System.IO.StreamWriter(ObjectDatPath, True) With {.AutoFlush = True}
+    Public objWriterChat As System.IO.TextWriter = New System.IO.StreamWriter(ChatLogPath, True) With {.AutoFlush = True}
     Public vp As VpNet.Core.Instance
     ' Dim LastMarker As Short
     Dim ProgramIsClosing As Boolean
@@ -130,12 +125,12 @@ RetryLogin:
             info("Clearing markers...")
             ' Changed For to For Each
             For Each User In Users
-                If User.MarkerObjectID > 0 Then
-                    Dim markerObject As New VpNet.Core.Structs.VpObject
-                    markerObject.Id = Users.MarkerObjectID
-                    vp.DeleteObject(markerObject)
-                    vp.Wait(100)
-                End If
+                If User.MarkerObjectID = 0 Then Continue For
+
+                Dim markerObject As New VpNet.Core.Structs.VpObject
+                markerObject.Id = User.MarkerObjectID
+                vp.DeleteObject(markerObject)
+                vp.Wait(100)
             Next
         End If
 
@@ -236,7 +231,6 @@ RepeatLogin:
         If CreateMarkers() = False Then EnableMap = False : Timer3.Stop() : Timer1.Stop() : Return False 'Attempt to create marker objects
 
         info("Bot is now active. Use commands in-world to control.")
-
         Return True
     End Function
 
@@ -313,7 +307,7 @@ RepeatLogin:
 
                 Case "add mirror point"
                     vpSay("Command not implemented.", Users(un).Session) : Exit Select
-
+#If False Then ' Dead code
                     'we need directions and for individual users
                     Dim newObject As New VpNet.Core.Structs.VpObject
                     newObject.Position = New VpNet.Core.Structs.Vector3(Users(un).X, Users(un).Y, Users(un).Z)
@@ -328,6 +322,7 @@ RepeatLogin:
                     Catch ex As Exception
                         info(ex.Message)
                     End Try
+#End If
                 Case Else
                     vpSay("Command not recognised.", Users(un).Session)
             End Select
@@ -363,10 +358,8 @@ RepeatLogin:
 
         Randomize()
 
-
         'Find avatars which have no marker created and create them
-        'For i = 1 To User.GetUpperBound(0)
-        ' ROY: Renamed User() to Users() and used For Each instead of For i
+        Dim ref As Integer
         For Each User In Users
             If User.Session <> 0 And User.Name <> "" And User.MarkerObjectID <= 0 Then
                 If User.Name = "[Cat]" Then GoTo CatPrivilege
@@ -383,7 +376,7 @@ CatPrivilege:       'Except cat bot (for testing)
                     markerObject.Description = User.Name
                     markerObject.Action = User.MarkerObjectAction.Replace("{x}", 0).Replace("{z}", 0).Replace("{t}", 0).Replace("{r}", 0).Replace("{rt}", 0)
                     markerObject.Model = "cyfigure.rwx"
-                    markerObject.ReferenceNumber = i
+                    markerObject.ReferenceNumber = ref
                     'Console.WriteLine(user.Name & ": " & i)
                     Try
                         vp.AddObject(markerObject)
@@ -540,7 +533,6 @@ UpdateUserArray:
 
         'Update map location
         UpdateMarker(i)
-
         '  If User(i).oldX = User(i).X And User(i).oldZ = User(i).Z And User(i).Name = "Chris D" Then info(User(i).YAW)
     End Sub
 
@@ -811,12 +803,10 @@ FoundID:
         If Options.EnableChatLogging = True Then objWriterChat.Flush()
     End Sub
 
-
     Private Sub vpnet_EventUserAttributes(ByVal sender As VpNet.Core.Instance, ByVal userAttributes As VpNet.Core.Structs.UserAttributes)
         ReDim Preserve UserAttribute(UserAttribute.GetUpperBound(0) + 1)
         UserAttribute(UserAttribute.GetUpperBound(0)) = userAttributes
     End Sub
-
 
     Sub UpdateWikiCitizenList()
         Try
@@ -945,9 +935,10 @@ Skip3:
             Exit Sub
         End Try
     End Sub
+
     Sub SaveStatisticsLog()
         Try
-            If VPStats.UserActivity = "" Then Exit Sub
+            If VPStats.UserActivity = "" Then Return
 
 
             VPStats.LastHour = DateTime.UtcNow : UpdateStatisticsLog() 'Log for 23:00 - The previous update won't notice because the hour wasn't more than the previous hour - so we need to make a log for the last hour, as midnight is still
