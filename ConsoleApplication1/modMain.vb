@@ -7,11 +7,21 @@ Imports VpNet.NativeApi
 Imports System.Runtime.InteropServices
 Imports System
 Imports System.Globalization
+Imports System.IO
+
 'Implement a simple "undo" by having the last 5 objects a user built stored in the user array
 
 Module modMain
-    Dim objWriter As System.IO.TextWriter = New System.IO.StreamWriter(System.AppDomain.CurrentDomain.BaseDirectory & "vpstats_objects.dat", True)
-    Public objWriterChat As System.IO.TextWriter = New System.IO.StreamWriter(System.AppDomain.CurrentDomain.BaseDirectory & "chat.txt", True)
+    ' ROY: Path.Combine is safer when figuring out a combined path. Additionally,
+    ' Environment.CurrentDirectory is a shorter alternative to using AppDomain.etc
+    Dim ObjectDatPath As String = Path.Combine(Environment.CurrentDirectory, "vpstats_objects.dat")
+    Dim StatsDatPath As String = Path.Combine(Environment.CurrentDirectory, "vpstats.dat")
+    Dim ChatLogPath As String = Path.Combine(Environment.CurrentDirectory, "chat.txt")
+    Dim ConfigPath As String = Path.Combine(Environment.CurrentDirectory, "Config.ini")
+
+    ' ROY: Added AutoFlush initializer property to make StreamWriter auto-flush
+    Dim objWriter As System.IO.TextWriter = New System.IO.StreamWriter(ObjectDatPath, True) With {.AutoFlush = True}
+    Dim objWriterChat As System.IO.TextWriter = New System.IO.StreamWriter(ChatLogPath, True) With {.AutoFlush = True}
     'Inherits Bot
     Public vp As VpNet.Core.Instance
     ' Dim LastMarker As Short
@@ -23,6 +33,8 @@ Module modMain
     Dim SpinnyID As Integer
     Dim SpinnyD As Boolean
     Dim VpConnected As Boolean 'TODO: Attempt to fix crashing bug
+    Dim EnableMap As Boolean 'Used to replace Timer2, which was for map updates. Indicates whether map marker updates are enabled.
+
     Sub Main()
         Try
             'Initialise timers
@@ -44,7 +56,7 @@ Module modMain
             AddHandler Timer3.Elapsed, AddressOf Timer3_Tick
 
             'Load configuration from file
-            ConfigINI.Load(System.AppDomain.CurrentDomain.BaseDirectory & "Config.ini")
+            ConfigINI.Load(ConfigPath)
 
             Bot.LoginName = ConfigINI.GetKeyValue("Bot", "Name")
             Bot.UniHost = ConfigINI.GetKeyValue("Bot", "UniHost")
@@ -836,7 +848,7 @@ FoundID:
 
             'Save the last wiki update time
             ConfigINI.SetKeyValue("Wiki", "CitListLastUpdate", Wiki.CitListLastUpdate.ToString(New CultureInfo("en-GB")))
-            ConfigINI.Save(System.AppDomain.CurrentDomain.BaseDirectory & "Config.ini")
+            ConfigINI.Save(ConfigPath)
 
             Erase UserAttribute
             ReDim UserAttribute(0)
@@ -967,11 +979,11 @@ Skip3:
 
             'Save the last stats update time
             ConfigINI.SetKeyValue("Stats", "LastSave", VPStats.LastSave.ToString(New CultureInfo("en-GB")))
-            ConfigINI.Save(System.AppDomain.CurrentDomain.BaseDirectory & "Config.ini")
+            ConfigINI.Save(ConfigPath)
 
             'Save user stats to log file
             Dim outText As String = Date.UtcNow.AddDays(-1).ToString(New CultureInfo("en-GB")) & VPStats.UserActivity
-            Dim objWriter3 As System.IO.TextWriter = New System.IO.StreamWriter(System.AppDomain.CurrentDomain.BaseDirectory & "vpstats.dat", True)
+            Dim objWriter3 As System.IO.TextWriter = New System.IO.StreamWriter(StatsDatPath, True)
             objWriter3.WriteLine(outText & vbNewLine)
             objWriter3.Close()
 
