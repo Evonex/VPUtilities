@@ -201,13 +201,4 @@ FoundUser:
     Public Function R2D(ByVal Angle As Single) As Single
         R2D = Angle * 180 / Math.PI
     End Function
-
-    Public Function InvertNum(ByVal Num As Single)
-        If Num < 0 Then
-            Num = Num * 2
-        ElseIf Num > 0 Then
-            Num = Num - (Num * 2)
-            End If
-
-    End Function
 End Module

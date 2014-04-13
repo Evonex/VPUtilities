@@ -27,12 +27,12 @@ Module modMain
         Try
             'Initialise timers
             Timer1.AutoReset = True
-            Timer1.Interval = 80
+            Timer1.Interval = 1000
             AddHandler Timer1.Elapsed, AddressOf Timer1_Tick
 
-            Timer2.AutoReset = True
-            Timer2.Interval = 300
-            AddHandler Timer2.Elapsed, AddressOf Timer2_Tick
+            ' Timer2.AutoReset = True
+            ' Timer2.Interval = 300
+            ' AddHandler Timer2.Elapsed, AddressOf Timer2_Tick
 
             ReconnectTimer.AutoReset = True
             ReconnectTimer.Interval = 25000
@@ -80,7 +80,7 @@ RetryLogin:
 
             'Main loop
             Do
-                If DateTime.UtcNow.Subtract(Wiki.CitListLastUpdate).TotalDays >= 4 And Options.EnableWikiUpdates = True Then Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList() 'Update citizen list automatically
+                '   If DateTime.UtcNow.Subtract(Wiki.CitListLastUpdate).TotalDays >= 4 And Options.EnableWikiUpdates = True Then Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList() 'Update citizen list automatically
 
                 If Options.EnableStatisticsLogging = True Then
                     If DateTime.UtcNow.Hour > VPStats.LastHour.Hour Then VPStats.LastHour = DateTime.UtcNow : UpdateStatisticsLog()
@@ -112,12 +112,19 @@ RetryLogin:
                     End Select
                 End If
                 'TODO: Add "sleep commands" here to stop 100% cpu usage by Mono
+                'TODO: Next look into the SDK being the problem!
+                'vp.Wait(5)
+                If EnableMap = True And Timer1.Enabled = False Then
+                    info("Timer was disabled!")
+                    Timer1.Enabled = True
+                End If
             Loop
 
             If Options.EnableStatisticsLogging = True Then SaveStatisticsLog()
             EndProgram() 'End the program
 
         Catch ex2 As Exception
+            info("FATAL EXCEPTION: " & ex2.Message)
             End
         End Try
 
@@ -182,17 +189,22 @@ RetryLogin:
             AddHandler vp.EventChat, AddressOf vpnet_EventAvatarChat
             AddHandler vp.EventUserAttributes, AddressOf vpnet_EventUserAttributes
 RepeatLogin:
-            info("Logging into universe...")
-            vp.Connect(Bot.UniHost, Bot.UniPort)
-            vp.Wait(10)
+            Try
+                info("Logging into universe...")
+                vp.Connect(Bot.UniHost, Bot.UniPort)
+                vp.Wait(1000)
+            Catch ex As Exception
+                info(ex.Message)
+                Timer1.Stop()
+                Return False
+            End Try
 
             Try
                 vp.Login(Bot.CitName, Bot.CitPass, Bot.LoginName)
             Catch ex As Exception
-                If ex.Message.Contains("17") Then 'Strange error, repeat login.
-                    info(ex.Message)
-                    GoTo RepeatLogin
-                End If
+                info(ex.Message)
+                If ex.Message.Contains("17") Then GoTo RepeatLogin 'Strange error. Just repeat login.
+                Return False
             End Try
             vp.Wait(10)
             VpConnected = True
@@ -207,47 +219,51 @@ RepeatLogin:
             Return False
         End Try
 
-            Try
-                'Query cells
-                For CellXi As Integer = 240 To 260
-                    For CellZi As Integer = -260 To -240
-                        vp.QueryCell(CellXi, CellZi)
-                    Next
-                Next
-                Wait(5000) 'Wait for query and user avatar adds
+        Timer1.Start()
 
-                'Scan for old markers
-                For o = 1 To QueryData.GetUpperBound(0)
-                    'Delete old markers
-                    If QueryData(o).Action.Contains("name avmarker") Then
+        Try
+            'Query cells
+            For CellXi As Integer = 240 To 260
+                For CellZi As Integer = -260 To -240
+                    vp.QueryCell(CellXi, CellZi)
+                Next
+            Next
+            Wait(5000) 'Wait for query and user avatar adds
+
+            'Scan for old markers
+            For o = 1 To QueryData.GetUpperBound(0)
+                'Delete old markers
+                If QueryData(o).Action.Contains("name avmarker") Then
                     info("Deleted old marker for " & QueryData(o).Description)
-                        'Delete old objects
-                        vp.DeleteObject(QueryData(o))
-                    End If
-                Next
-                If VpConnected = False Then Return False
+                    'Delete old objects
+                    vp.DeleteObject(QueryData(o))
+                End If
+            Next
+            If VpConnected = False Then Return False
 
-            Catch ex As Exception
+        Catch ex As Exception
             info(ex.Message)
-                Timer1.Stop()
-                Return False
-            End Try
-            If Options.EnableMapUpdates = True Then Timer2.Start()
-            Timer3.Start()
+            Timer1.Stop()
+            Return False
+        End Try
+        If Options.EnableMapUpdates = True Then EnableMap = True
+        Timer3.Start()
 
 
-            If CreateMarkers() = False Then Timer2.Stop() : Timer3.Stop() : Timer1.Stop() : Return False 'Attempt to create marker objects
+        If CreateMarkers() = False Then EnableMap = False : Timer3.Stop() : Timer1.Stop() : Return False 'Attempt to create marker objects
 
         info("Bot is now active. Use commands in-world to control.")
 
-            Return True
+        Return True
     End Function
 
     Private Sub vpnet_EventAvatarChat(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.EventData.Chat)
+        'TODO: Remove; this is to test event being received and that wait timer is still going
+        Dim ChatMessage As String = LTrim(eventData.Message)
+        If ChatMessage = "u:test123abcd" Then info(Timer1.Enabled) : vpSay(Timer1.Enabled)
         If ProgramIsClosing = True Then Exit Sub
         If VpConnected = False Then Exit Sub
 
-        Dim ChatMessage As String = LTrim(eventData.Message)
 
         If eventData.ChatType = 1 Then 'Log console messages 
             If eventData.Username = "" Then
@@ -358,8 +374,8 @@ RepeatLogin:
 
     Function CreateMarkers() As Boolean
 
-        If Timer2.Enabled = False Then Return True : Exit Function 'Wait until all avatars have entered first - to avoid duplicates
-        If Options.EnableMapUpdates = False Then Return False : Exit Function
+        If EnableMap = False Then Return True 'Wait until all avatars have entered first - to avoid duplicates
+        If Options.EnableMapUpdates = False Then Return False
 
         Randomize()
 
@@ -398,6 +414,74 @@ CatPrivilege:       'Except cat bot (for testing)
 
     End Function
 
+    Sub UpdateMarker(ByVal i As Integer) 'Updates the map marker for an avatar
+        If EnableMap = False Then Exit Sub
+
+        'If nessecary, update map marker location
+        If Users(i).MovedSinceLastMarkerUpdate = True And Users(i).Session <> 0 And Users(i).MarkerObjectID > 0 Then
+            Users(i).MovedSinceLastMarkerUpdate = False
+
+            Dim movX As Single = (Users(i).X - Users(i).oldX) / 15 'Controls the distance and direction
+            Dim movZ As Single = (Users(i).Z - Users(i).oldZ) / 15 'TODO: make this more precise, could even use the yaw of the user
+            Dim movTime As Single = 0.3 'Move must finish by this time; therefore controls the speed.
+
+
+            Dim markerYAW As Single = Users(i).YAW '-(User(i).YAW) + 180
+            Dim markeroldYAW As Single = Users(i).oldYAW '-(User(i).oldYAW) + 180
+            Dim rotYAW As Integer = markerYAW - markeroldYAW '(markerYAW Mod 360) - (markeroldYAW Mod 360)
+            '  If rotYAW < 0 Then rotYAW += 360
+
+            'Dim rotY As Single = ((Math.Abs(rotYAW) / 360) * 120)
+            Dim rotY As Single = ((Math.Abs(rotYAW) / 360) * 120) 'RPM, 500ms. 60 = 1 rotation in a second
+            Dim rotTime As Single = 0.3
+
+            If markerYAW < markeroldYAW Then rotY = -rotY 'Reverse rotation
+            'Dim rotTime As Single = (rotYAW / 360)
+            rotY = -rotY 'Invert because nessecary
+
+            If markerYAW = markeroldYAW Then rotY = 0 : rotTime = 0 'Don't rotate if user isn't, may be redundant.
+            Dim markerObject As New VpNet.Core.Structs.VpObject
+            markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (Users(i).oldX / 100), 0.014, -250 + (Users(i).oldZ / 100))
+            'markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User(i).X / 100), 0.014, -250 + (User(i).Z / 100))
+            markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, -(Users(i).YAW) + 180, 0)
+            markerObject.Angle = Single.PositiveInfinity
+            markerObject.Description = Users(i).Name
+            markerObject.Action = Users(i).MarkerObjectAction.Replace("{x}", movX).Replace("{z}", movZ).Replace("{t}", movTime).Replace("{r}", rotY).Replace("{rt}", rotTime)
+            markerObject.ReferenceNumber = -1
+            markerObject.Model = "cyfigure.rwx"
+            markerObject.Id = Users(i).MarkerObjectID
+            Try
+                vp.ChangeObject(markerObject)
+            Catch ex As Exception
+                'This error could indicate connection loss
+                If EnableMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
+                If VpConnected = False Then Exit Sub
+                info("Object change error: " & ex.Message)
+                info("Connection could have been lost... reconnecting.")
+                VpConnected = False
+
+                Try
+                    vp.Leave()
+                    vp.Dispose()
+                Catch ex2 As Exception
+                End Try
+                For ib As Integer = 1 To Users.GetUpperBound(0)
+                    ClearUserData(ib)
+                Next
+
+                Timer3.Enabled = False
+                EnableMap = False
+                Timer1.Enabled = False
+                ReconnectTimer.Enabled = True
+            End Try
+            'Store old position
+            Users(i).oldX = Users(i).X
+            Users(i).oldY = Users(i).Y
+            Users(i).oldZ = Users(i).Z
+            Users(i).oldYAW = Users(i).YAW
+
+        End If
+    End Sub
     Private Sub vpnet_EventAvatarAdd(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.Structs.Avatar)
         'If VpConnected = False Then Exit Sub
         Dim i As Integer
@@ -664,165 +748,9 @@ FoundID:
         End If
     End Sub
 
-    Private Sub Timer1_Tick(ByVal sender As Object, ByVal e As System.Timers.ElapsedEventArgs)
-        On Error Resume Next
-        '  Try
-        vp.Wait(2)
-        'Catch ex As Exception
-        '    vp.Wait(2)
-        'TODO: Figure out why this causes some kind of error occasionally
-        'Console.Write("Error: vp_wait, " & ex.Message)
-        'End Try
-
-    End Sub
-
-    Private Sub Timer2_Tick(ByVal sender As Object, ByVal e As System.Timers.ElapsedEventArgs)
-        If ProgramIsClosing = True Then Exit Sub
-        If VpConnected = False Then Exit Sub
-        'Update marker locations
-        For i As Integer = 1 To User.GetUpperBound(0)
-            If User(i).MovedSinceLastMarkerUpdate = True And User(i).Session <> 0 And User(i).MarkerObjectID > 0 Then
-                User(i).MovedSinceLastMarkerUpdate = False
-                'If QueryData(Marker(User(i).MarkerObjectID)).Action.Substring(QueryData(Marker(User(i).MarkerObjectID)).Action.Length - 2, 2) = "no" Then QueryData(Marker(User(i).MarkerObjectID)).Action = QueryData(Marker(User(i).MarkerObjectID)).Action.Substring(0, QueryData(Marker(User(i).MarkerObjectID)).Action.Length - 2) & "yes"
-                'Console.WriteLine(User(i).MarkerObjectID & " " & User(i).X & " " & User(i).Y & " " & User(i).Z)
-                'Console.WriteLine(User(i).YAW)
-
-                'TODO: What if they have no oldX/Z?
-
-
-                Dim movX As Single = (User(i).X - User(i).oldX) / 15 'Controls the distance and direction
-                Dim movZ As Single = (User(i).Z - User(i).oldZ) / 15 'TODO: make this more precise, could even use the yaw of the user
-                Dim movTime As Single = 0.3 'Move must finish by this time; therefore controls the speed.
-
-
-                Dim markerYAW As Single = User(i).YAW '-(User(i).YAW) + 180
-                Dim markeroldYAW As Single = User(i).oldYAW '-(User(i).oldYAW) + 180
-                Dim rotYAW As Integer = markerYAW - markeroldYAW '(markerYAW Mod 360) - (markeroldYAW Mod 360)
-                '  If rotYAW < 0 Then rotYAW += 360
-
-                Dim rotY As Single = ((Math.Abs(rotYAW) / 360) * 120) 'RPM, 500ms. 60 = 1 rotation in a second
-                Dim rotTime As Single = 0.5
-
-                If markerYAW < markeroldYAW Then rotY = -rotY 'Reverse rotation
-                'Dim rotTime As Single = (rotYAW / 360)
-                rotY = -rotY 'Invert because nessecary
-
-                If markerYAW = markeroldYAW Then rotY = 0 : rotTime = 0 'Don't rotate if user isn't, may be redundant.
-                Dim markerObject As New VpNet.Core.Structs.VpObject
-                markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User(i).oldX / 100), 0.014, -250 + (User(i).oldZ / 100))
-                'markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User(i).X / 100), 0.014, -250 + (User(i).Z / 100))
-                markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, -(User(i).YAW) + 180, 0)
-                markerObject.Angle = Single.PositiveInfinity
-                markerObject.Description = User(i).Name
-                markerObject.Action = User(i).MarkerObjectAction.Replace("{x}", movX).Replace("{z}", movZ).Replace("{t}", movTime).Replace("{r}", rotY).Replace("{rt}", rotTime)
-                markerObject.ReferenceNumber = -1
-                markerObject.Model = "cyfigure.rwx"
-                markerObject.Id = User(i).MarkerObjectID
-                Try
-                    vp.ChangeObject(markerObject)
-                Catch ex As Exception
-                    'This error could indicate connection loss
-                    If Timer2.Enabled = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
-                    If VpConnected = False Then Exit Sub
-                    info("Object change error: " & ex.Message)
-                    info("Connection could have been lost... reconnecting.")
-                    VpConnected = False
-
-                    Try
-                        vp.Leave()
-                        vp.Dispose()
-                    Catch ex2 As Exception
-                    End Try
-                    For ib As Integer = 1 To User.GetUpperBound(0)
-                        ClearUserData(ib)
-                    Next
-
-                    Timer3.Enabled = False
-                    Timer2.Enabled = False
-                    Timer1.Enabled = False
-                    ReconnectTimer.Enabled = True
-                End Try
-                'Store old position
-                User(i).oldX = User(i).X
-                User(i).oldY = User(i).Y
-                User(i).oldZ = User(i).Z
-                User(i).oldYAW = User(i).YAW
-nextUser:
-
-            End If
-        Next
-    End Sub
-
-    Sub UpdateMarker(ByVal i As Integer) 'Updates the map marker for an avatar
-
-        'If nessecary, update map marker location
-        If User(i).MovedSinceLastMarkerUpdate = True And User(i).Session <> 0 And User(i).MarkerObjectID > 0 Then
-            User(i).MovedSinceLastMarkerUpdate = False
-
-            Dim movX As Single = (User(i).X - User(i).oldX) / 15 'Controls the distance and direction
-            Dim movZ As Single = (User(i).Z - User(i).oldZ) / 15 'TODO: make this more precise, could even use the yaw of the user
-            Dim movTime As Single = 0.3 'Move must finish by this time; therefore controls the speed.
-
-
-            Dim markerYAW As Single = User(i).YAW '-(User(i).YAW) + 180
-            Dim markeroldYAW As Single = User(i).oldYAW '-(User(i).oldYAW) + 180
-            Dim rotYAW As Integer = markerYAW - markeroldYAW '(markerYAW Mod 360) - (markeroldYAW Mod 360)
-            '  If rotYAW < 0 Then rotYAW += 360
-
-            Dim rotY As Single = ((Math.Abs(rotYAW) / 360) * 120) 'RPM, 500ms. 60 = 1 rotation in a second
-            Dim rotTime As Single = 0.5
-
-            If markerYAW < markeroldYAW Then rotY = -rotY 'Reverse rotation
-            'Dim rotTime As Single = (rotYAW / 360)
-            rotY = -rotY 'Invert because nessecary
-
-            If markerYAW = markeroldYAW Then rotY = 0 : rotTime = 0 'Don't rotate if user isn't, may be redundant.
-            Dim markerObject As New VpNet.Core.Structs.VpObject
-            markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User(i).oldX / 100), 0.014, -250 + (User(i).oldZ / 100))
-            'markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User(i).X / 100), 0.014, -250 + (User(i).Z / 100))
-            markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, -(User(i).YAW) + 180, 0)
-            markerObject.Angle = Single.PositiveInfinity
-            markerObject.Description = User(i).Name
-            markerObject.Action = User(i).MarkerObjectAction.Replace("{x}", movX).Replace("{z}", movZ).Replace("{t}", movTime).Replace("{r}", rotY).Replace("{rt}", rotTime)
-            markerObject.ReferenceNumber = -1
-            markerObject.Model = "cyfigure.rwx"
-            markerObject.Id = User(i).MarkerObjectID
-            Try
-                vp.ChangeObject(markerObject)
-            Catch ex As Exception
-                'This error could indicate connection loss
-                If Timer2.Enabled = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
-                If VpConnected = False Then Exit Sub
-                info("Object change error: " & ex.Message)
-                info("Connection could have been lost... reconnecting.")
-                VpConnected = False
-
-                Try
-                    vp.Leave()
-                    vp.Dispose()
-                Catch ex2 As Exception
-                End Try
-                For ib As Integer = 1 To User.GetUpperBound(0)
-                    ClearUserData(ib)
-                Next
-
-                Timer3.Enabled = False
-                Timer2.Enabled = False
-                Timer1.Enabled = False
-                ReconnectTimer.Enabled = True
-            End Try
-            'Store old position
-            User(i).oldX = User(i).X
-            User(i).oldY = User(i).Y
-            User(i).oldZ = User(i).Z
-            User(i).oldYAW = User(i).YAW
-
-        End If
-    End Sub
-
     Private Sub vpnet_EventWorldDisconnect(ByVal sender As VpNet.Core.Instance)
         VpConnected = False
-        If Timer2.Enabled = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
+        If EnableMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
         info("World connection lost. Attempting to reconnect...")
         On Error Resume Next
 
@@ -833,14 +761,14 @@ nextUser:
         Next
 
         Timer3.Enabled = False
-        Timer2.Enabled = False
+        EnableMap = False
         Timer1.Enabled = False
         ReconnectTimer.Enabled = True
     End Sub
 
     Private Sub vpnet_EventUniverseDisconnect(ByVal sender As VpNet.Core.Instance)
         VpConnected = False
-        If Timer2.Enabled = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
+        If EnableMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
         info("Universe connection lost. Attempting to reconnect...")
         Try
             vp.Dispose()
@@ -850,9 +778,21 @@ nextUser:
             ClearUserData(i)
         Next
         Timer3.Enabled = False
-        Timer2.Enabled = False
+        EnableMap = False
         Timer1.Enabled = False
         ReconnectTimer.Enabled = True
+    End Sub
+    Private Sub Timer1_Tick(ByVal sender As Object, ByVal e As System.Timers.ElapsedEventArgs)
+        '  On Error Resume Next
+        Try
+            vp.Wait(0)
+        Catch ex As Exception
+            vp.Wait(1)
+            'TODO: Figure out why this causes some kind of error occasionally
+            info("Error: vp_wait, " & ex.Message)
+        End Try
+        testTicks += 1
+        If testTicks >= 1200 Then info("Timer still ticking...") : testTicks = 0
     End Sub
     Private Sub ReconnectTimer_Tick(ByVal sender As System.Object, ByVal e As System.EventArgs)
         If LoginBot() = True Then
@@ -964,7 +904,7 @@ Skip3:
             info("EXCEPTION: " & ex.Message)
             Exit Sub
         End Try
-        info("Citizen list updated. " & Timer1.Enabled & Timer2.Enabled & Timer3.Enabled)
+        info("Citizen list updated.")
     End Sub
 
     Sub UpdateStatisticsLog()
