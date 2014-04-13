@@ -3,6 +3,7 @@ Imports System.Globalization
 Module modStuff
 
     Class objBot
+        Public Instance As VpNet.Core.Instance
         Public LoginName As String
         Public UniHost As String
         Public UniPort As Integer

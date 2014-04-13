@@ -18,7 +18,6 @@ Module modMain
     Public objWriter As System.IO.TextWriter = New System.IO.StreamWriter(ObjectDatPath, True) With {.AutoFlush = True}
     Public objWriterChat As System.IO.TextWriter = New System.IO.StreamWriter(ChatLogPath, True) With {.AutoFlush = True}
 
-    Public vp As VpNet.Core.Instance
     ' Dim LastMarker As Short
     Dim ProgramIsClosing As Boolean
     Dim SpinnyID As Integer
