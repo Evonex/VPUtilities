@@ -1,4 +1,5 @@
 Imports System.Globalization
+Imports System.Collections.Generic
 
 Module modStuff
     Enum connectionState
@@ -83,10 +84,11 @@ Module modStuff
     End Structure
     Public ConfigINI As New IniFile
 
+    Public Bot As objBot
+    Public Users As List(Of objUser)
+
     Dim LastWriteLine As String
     Public Marker(31) As Integer 'Contains the querydata array index of each marker
-    Public Bot As objBot
-    Public Users() As objUser
     Public Options As structOptions
     Public VPStats As structStatistics
     Public Wiki As structWiki

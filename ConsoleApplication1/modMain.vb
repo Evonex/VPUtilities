@@ -356,103 +356,75 @@ CatPrivilege:       'Except cat bot (for testing)
 
     End Function
 
-    Sub UpdateMarker(ByVal i As Integer) 'Updates the map marker for an avatar
-        If EnableMap = False Then Exit Sub
+    Sub UpdateMarker(ByRef User As objUser) 'Updates the map marker for an avatar
+        If EnableMap = False Then Return
 
         'If nessecary, update map marker location
-        If Users(i).MovedSinceLastMarkerUpdate = True And Users(i).Session <> 0 And Users(i).MarkerObjectID > 0 Then
-            Users(i).MovedSinceLastMarkerUpdate = False
+        If Not User.MovedSinceLastMarkerUpdate Or User.Session = 0 Or User.MarkerObjectID <= 0 Then Return
 
-            Dim movX As Single = (Users(i).X - Users(i).oldX) / 15 'Controls the distance and direction
-            Dim movZ As Single = (Users(i).Z - Users(i).oldZ) / 15 'TODO: make this more precise, could even use the yaw of the user
-            Dim movTime As Single = 0.3 'Move must finish by this time; therefore controls the speed.
+        User.MovedSinceLastMarkerUpdate = False
+
+        Dim movX As Single = (User.X - User.oldX) / 15 'Controls the distance and direction
+        Dim movZ As Single = (User.Z - User.oldZ) / 15 'TODO: make this more precise, could even use the yaw of the user
+        Dim movTime As Single = 0.3 'Move must finish by this time; therefore controls the speed.
 
 
-            Dim markerYAW As Single = Users(i).YAW '-(User(i).YAW) + 180
-            Dim markeroldYAW As Single = Users(i).oldYAW '-(User(i).oldYAW) + 180
-            Dim rotYAW As Integer = markerYAW - markeroldYAW '(markerYAW Mod 360) - (markeroldYAW Mod 360)
-            '  If rotYAW < 0 Then rotYAW += 360
+        Dim markerYAW As Single = User.YAW '-(User(i).YAW) + 180
+        Dim markeroldYAW As Single = User.oldYAW '-(User(i).oldYAW) + 180
+        Dim rotYAW As Integer = markerYAW - markeroldYAW '(markerYAW Mod 360) - (markeroldYAW Mod 360)
+        '  If rotYAW < 0 Then rotYAW += 360
 
-            'Dim rotY As Single = ((Math.Abs(rotYAW) / 360) * 120)
-            Dim rotY As Single = ((Math.Abs(rotYAW) / 360) * 120) 'RPM, 500ms. 60 = 1 rotation in a second
-            Dim rotTime As Single = 0.3
+        'Dim rotY As Single = ((Math.Abs(rotYAW) / 360) * 120)
+        Dim rotY As Single = ((Math.Abs(rotYAW) / 360) * 120) 'RPM, 500ms. 60 = 1 rotation in a second
+        Dim rotTime As Single = 0.3
 
-            If markerYAW < markeroldYAW Then rotY = -rotY 'Reverse rotation
-            'Dim rotTime As Single = (rotYAW / 360)
-            rotY = -rotY 'Invert because nessecary
+        If markerYAW < markeroldYAW Then rotY = -rotY 'Reverse rotation
+        'Dim rotTime As Single = (rotYAW / 360)
+        rotY = -rotY 'Invert because nessecary
 
-            If markerYAW = markeroldYAW Then rotY = 0 : rotTime = 0 'Don't rotate if user isn't, may be redundant.
-            Dim markerObject As New VpNet.Core.Structs.VpObject
-            markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (Users(i).oldX / 100), 0.014, -250 + (Users(i).oldZ / 100))
-            'markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User(i).X / 100), 0.014, -250 + (User(i).Z / 100))
-            markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, -(Users(i).YAW) + 180, 0)
-            markerObject.Angle = Single.PositiveInfinity
-            markerObject.Description = Users(i).Name
-            markerObject.Action = Users(i).MarkerObjectAction.Replace("{x}", movX).Replace("{z}", movZ).Replace("{t}", movTime).Replace("{r}", rotY).Replace("{rt}", rotTime)
-            markerObject.ReferenceNumber = -1
-            markerObject.Model = "cyfigure.rwx"
-            markerObject.Id = Users(i).MarkerObjectID
-            Try
-                vp.ChangeObject(markerObject)
-            Catch ex As Exception
-                'This error could indicate connection loss
-                If EnableMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
-                If VpConnected = False Then Exit Sub
-                info("Object change error: " & ex.Message)
-                info("Connection could have been lost... reconnecting.")
-                VpConnected = False
+        If markerYAW = markeroldYAW Then rotY = 0 : rotTime = 0 'Don't rotate if user isn't, may be redundant.
+        Dim markerObject As New VpNet.Core.Structs.VpObject
+        markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User.oldX / 100), 0.014, -250 + (User.oldZ / 100))
+        'markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User(i).X / 100), 0.014, -250 + (User(i).Z / 100))
+        markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, -(User.YAW) + 180, 0)
+        markerObject.Angle = Single.PositiveInfinity
+        markerObject.Description = User.Name
+        markerObject.Action = User.MarkerObjectAction.Replace("{x}", movX).Replace("{z}", movZ).Replace("{t}", movTime).Replace("{r}", rotY).Replace("{rt}", rotTime)
+        markerObject.ReferenceNumber = -1
+        markerObject.Model = "cyfigure.rwx"
+        markerObject.Id = User.MarkerObjectID
 
-                Try
-                    vp.Leave()
-                    vp.Dispose()
-                Catch ex2 As Exception
-                End Try
-                For ib As Integer = 1 To Users.GetUpperBound(0)
-                    ClearUserData(ib)
-                Next
+        Bot.Instance.ChangeObject(markerObject)
 
-                EnableMap = False
-            End Try
-            'Store old position
-            Users(i).oldX = Users(i).X
-            Users(i).oldY = Users(i).Y
-            Users(i).oldZ = Users(i).Z
-            Users(i).oldYAW = Users(i).YAW
-
-        End If
+        'Store old position
+        User.oldX = User.X
+        User.oldY = User.Y
+        User.oldZ = User.Z
+        User.oldYAW = User.YAW
     End Sub
 
     Private Sub vpnet_EventAvatarAdd(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.Structs.Avatar)
-        'If VpConnected = False Then Exit Sub
-        Dim i As Integer
-        'Find space for user
+        Dim newUser As objUser = New objUser
 
-        For i = 1 To Users.GetUpperBound(0)
-            If Users(i).Online = False Then GoTo FoundSpace
-        Next
+        newUser.Name = eventData.Name
+        newUser.Session = eventData.Session
+        newUser.AvatarType = eventData.AvatarType
+        newUser.X = eventData.X
+        newUser.Y = eventData.Y
+        newUser.Z = eventData.Z
+        newUser.oldX = eventData.X
+        newUser.oldY = eventData.Y
+        newUser.oldZ = eventData.Z
+        newUser.MarkerObjectID = -1
+        newUser.Id = eventData.Id
+        newUser.Online = True
 
-        'No space found - Make a slot in array for the additional user
-        ReDim Preserve Users(Users.GetUpperBound(0) + 1)
-
-        i = Users.GetUpperBound(0)
-FoundSpace:
-        Users(i).Name = eventData.Name
-        Users(i).Session = eventData.Session
-        Users(i).AvatarType = eventData.AvatarType
-        Users(i).X = eventData.X
-        Users(i).Y = eventData.Y
-        Users(i).Z = eventData.Z
-        Users(i).oldX = eventData.X
-        Users(i).oldY = eventData.Y
-        Users(i).oldZ = eventData.Z
-        Users(i).MarkerObjectID = -1
-        Users(i).Id = eventData.Id
-        Users(i).Online = True
+        Users.Add(newUser)
 
         'Set bot owner
         'TODO: Use code from chatlink for multiple owners
-        If Users(i).Id = 104 Or Users(i).Name = "Chris D" Then
-            Bot.Owner = Users(i).Session
+        If newUser.Id = 104 Or newUser.Name = "Chris D" Then
+            Bot.Owner = newUser.Session
             info("Bot owner detected. Session: " & Bot.Owner)
         End If
 
@@ -515,27 +487,6 @@ UpdateUserArray:
             vp.Wait(100)
         End If
         ChatLogAppend("[" & DateTime.UtcNow.ToString(New CultureInfo("en-GB")) & "] EXITS: " & Users(i).Name & ", " & Users(i).Id & ", " & Users(i).Session)
-    End Sub
-
-
-
-    Sub ClearUserData(ByVal i As Short)
-        'Clear user data but keep their slot in array
-        Users(i).Session = 0
-        Users(i).Name = ""
-        Users(i).AvatarType = 0
-        Users(i).X = 0
-        Users(i).Y = 0
-        Users(i).Z = 0
-        Users(i).YAW = 0
-        Users(i).Pitch = 0
-        Users(i).Id = 0
-        Users(i).ListIndex = -1
-        Users(i).MarkerObjectID = -1
-        Users(i).MovedSinceLastMarkerUpdate = False
-        Users(i).MapClickTime = Nothing
-        Users(i).statsActiveInLastHour = False
-        Users(i).Online = False
     End Sub
 
     Private Sub vpnet_EventObjectClick(ByVal sender As VpNet.Core.Instance, ByVal sessionId As Integer, ByVal objectId As Integer, ByVal clickHitX As Single, ByVal clickHitY As Single, ByVal clickHitZ As Single)
