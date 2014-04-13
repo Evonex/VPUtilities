@@ -7,6 +7,7 @@ Imports System.Runtime.InteropServices
 Imports System
 Imports System.Globalization
 Imports System.IO
+Imports System.Threading
 
 'Implement a simple "undo" by having the last 5 objects a user built stored in the user array
 Module modMain
@@ -19,84 +20,55 @@ Module modMain
     Public objWriterChat As System.IO.TextWriter = New System.IO.StreamWriter(ChatLogPath, True) With {.AutoFlush = True}
 
     Dim State As connectionState = connectionState.Disconnected
+
     ' Dim LastMarker As Short
-    Dim ProgramIsClosing As Boolean
+    Dim Exiting As Boolean
     Dim SpinnyID As Integer
     Dim SpinnyD As Boolean
-    Dim VpConnected As Boolean 'TODO: Attempt to fix crashing bug
     Dim EnableMap As Boolean 'Used to replace Timer2, which was for map updates. Indicates whether map marker updates are enabled.
 
     Sub Main()
         Try
-            'Load configuration from file
-            ConfigINI.Load(ConfigPath)
+            LoadConfig()
 
-            Bot.LoginName = ConfigINI.GetKeyValue("Bot", "Name")
-            Bot.UniHost = ConfigINI.GetKeyValue("Bot", "UniHost")
-            Bot.UniPort = Convert.ToInt32(ConfigINI.GetKeyValue("Bot", "UniPort"))
-            Bot.CitName = ConfigINI.GetKeyValue("Bot", "CitName")
-            Bot.CitPass = ConfigINI.GetKeyValue("Bot", "CitPass")
-            Bot.WorldName = ConfigINI.GetKeyValue("Bot", "World")
-
-            Options.EnableMapUpdates = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableMapUpdates"))
-            Options.EnableObjectLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableObjectLogging"))
-            Options.EnableChatLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableChatLogging"))
-            Options.EnableStatisticsLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableStatisticsLogging"))
-            Options.EnableWikiUpdates = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableWikiUpdates"))
-
-            Wiki.CitListLastUpdate = DateTime.Parse(ConfigINI.GetKeyValue("Wiki", "CitListLastUpdate"), New CultureInfo("en-GB"))
-            Wiki.Username = ConfigINI.GetKeyValue("Wiki", "Username")
-            Wiki.Password = ConfigINI.GetKeyValue("Wiki", "Password")
-            VPStats.LastSave = DateTime.Parse(ConfigINI.GetKeyValue("Stats", "LastSave"), New CultureInfo("en-GB"))
-
-            Dim RetryCount As Byte = 0
-            ' VPStats.LastSave = DateTime.UtcNow
-            info("EnableWikiUpdates = " & Options.EnableWikiUpdates)
-            info("EnableMapUpdates = " & Options.EnableMapUpdates)
-            info("EnableObjectLogging = " & Options.EnableObjectLogging)
-            info("EnableStatisticsLogging = " & Options.EnableStatisticsLogging)
-            info("EnableChatLogging = " & Options.EnableChatLogging)
-
-RetryLogin:
-            If LoginBot() = False Then 'Attempt login. Retry a few times. End program if fails.
-                If RetryCount > 2 Then End
-                RetryCount = RetryCount + 1
-                info("Login failed. Retrying...")
-                Wait(100)
-                GoTo RetryLogin
-            End If
+            SetupBot()
 
             'Main loop
-            Do
-                '   If DateTime.UtcNow.Subtract(Wiki.CitListLastUpdate).TotalDays >= 4 And Options.EnableWikiUpdates = True Then Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList() 'Update citizen list automatically
+            While Not Exiting
 
-                If Options.EnableStatisticsLogging = True Then
+                ' If DateTime.UtcNow.Subtract(Wiki.CitListLastUpdate).TotalDays >= 4 And Options.EnableWikiUpdates = True Then Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList() 'Update citizen list automatically
+                Select Case State
+                    Case connectionState.Disconnected
+                        LoginBot()
+                        CheckMarkers()
+
+                    Case connectionState.Connected
+                        Bot.Instance.Wait(25)
+                End Select
+
+                If Options.EnableStatisticsLogging Then
                     If DateTime.UtcNow.Hour > VPStats.LastHour.Hour Then VPStats.LastHour = DateTime.UtcNow : UpdateStatisticsLog()
                     If DateTime.UtcNow.Day > VPStats.LastSave.Day Then VPStats.LastSave = DateTime.UtcNow : SaveStatisticsLog()
                 End If
 
-                'TODO: Add "sleep commands" here to stop 100% cpu usage by Mono
-                'TODO: Next look into the SDK being the problem!
-            Loop
+            End While
 
-            If Options.EnableStatisticsLogging = True Then SaveStatisticsLog()
             EndProgram() 'End the program
 
-        Catch ex2 As Exception
-            info("FATAL EXCEPTION: " & ex2.Message)
-            End
+        Catch ex As Exception
+            info("FATAL EXCEPTION: " & ex.Message)
         End Try
     End Sub
 
     Sub EndProgram()
-        ProgramIsClosing = True
+        If Options.EnableStatisticsLogging Then SaveStatisticsLog()
 
         info("Saving logs...")
         objWriter.Close()
         objWriterChat.Close()
 
         'Delete all the marker objects
-        If Options.EnableMapUpdates = True Then
+        If Options.EnableMapUpdates Then
             info("Clearing markers...")
             ' Changed For to For Each
             For Each User In Users
@@ -104,94 +76,120 @@ RetryLogin:
 
                 Dim markerObject As New VpNet.Core.Structs.VpObject
                 markerObject.Id = User.MarkerObjectID
-                vp.DeleteObject(markerObject)
-                vp.Wait(100)
+                Bot.Instance.DeleteObject(markerObject)
+                Bot.Instance.Wait(100)
             Next
         End If
-
-        End
     End Sub
 
+    Sub LoadConfig()
+        'Load configuration from file
+        ConfigINI.Load(ConfigPath)
 
-    Function LoginBot()
+        Bot.LoginName = ConfigINI.GetKeyValue("Bot", "Name")
+        Bot.UniHost = ConfigINI.GetKeyValue("Bot", "UniHost")
+        Bot.UniPort = Convert.ToInt32(ConfigINI.GetKeyValue("Bot", "UniPort"))
+        Bot.CitName = ConfigINI.GetKeyValue("Bot", "CitName")
+        Bot.CitPass = ConfigINI.GetKeyValue("Bot", "CitPass")
+        Bot.WorldName = ConfigINI.GetKeyValue("Bot", "World")
 
+        Options.EnableMapUpdates = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableMapUpdates"))
+        Options.EnableObjectLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableObjectLogging"))
+        Options.EnableChatLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableChatLogging"))
+        Options.EnableStatisticsLogging = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableStatisticsLogging"))
+        Options.EnableWikiUpdates = Val2Bool(ConfigINI.GetKeyValue("Options", "EnableWikiUpdates"))
+
+        Wiki.CitListLastUpdate = DateTime.Parse(ConfigINI.GetKeyValue("Wiki", "CitListLastUpdate"), New CultureInfo("en-GB"))
+        Wiki.Username = ConfigINI.GetKeyValue("Wiki", "Username")
+        Wiki.Password = ConfigINI.GetKeyValue("Wiki", "Password")
+        VPStats.LastSave = DateTime.Parse(ConfigINI.GetKeyValue("Stats", "LastSave"), New CultureInfo("en-GB"))
+
+        ' VPStats.LastSave = DateTime.UtcNow
+        info("EnableWikiUpdates = " & Options.EnableWikiUpdates)
+        info("EnableMapUpdates = " & Options.EnableMapUpdates)
+        info("EnableObjectLogging = " & Options.EnableObjectLogging)
+        info("EnableStatisticsLogging = " & Options.EnableStatisticsLogging)
+        info("EnableChatLogging = " & Options.EnableChatLogging)
+    End Sub
+
+    Sub SetupBot()
+        Bot.Instance = New VpNet.Core.Instance
+
+        AddHandler Bot.Instance.EventAvatarAdd, AddressOf vpnet_EventAvatarAdd
+        AddHandler Bot.Instance.EventAvatarChange, AddressOf vpnet_EventAvatarChange
+        AddHandler Bot.Instance.EventAvatarDelete, AddressOf vpnet_EventAvatarDelete
+
+        AddHandler Bot.Instance.EventObjectCreate, AddressOf vpnet_EventObjectCreate
+        AddHandler Bot.Instance.EventObjectChange, AddressOf vpnet_EventObjectChange
+        AddHandler Bot.Instance.EventObjectDelete, AddressOf vpnet_EventObjectDelete
+        AddHandler Bot.Instance.EventObjectClick, AddressOf vpnet_EventObjectClick
+
+        AddHandler Bot.Instance.EventQueryCellResult, AddressOf vpnet_EventQueryCellResult
+        AddHandler Bot.Instance.EventQueryCellEnd, AddressOf vpnet_EventQueryCellEnd
+        AddHandler Bot.Instance.CallbackObjectAdd, AddressOf vpnet_CallbackObjectAdd
+
+        AddHandler Bot.Instance.EventUniverseDisconnect, AddressOf vpnet_EventUniverseDisconnect
+        AddHandler Bot.Instance.EventWorldDisconnect, AddressOf vpnet_EventWorldDisconnect
+        AddHandler Bot.Instance.EventChat, AddressOf vpnet_EventAvatarChat
+        AddHandler Bot.Instance.EventUserAttributes, AddressOf vpnet_EventUserAttributes
+    End Sub
+
+    Sub LoginBot()
         ReDim Users(1)
         ReDim QueryData(0)
         ReDim UserAttribute(0)
         ' LastMarker = 0
 
-        Try
-            vp = New VpNet.Core.Instance()
+        Dim attempt = 1
+        Dim delay = 1000
+        Dim nextDelay As Integer
 
-            AddHandler vp.EventAvatarAdd, AddressOf vpnet_EventAvatarAdd
-            AddHandler vp.EventAvatarChange, AddressOf vpnet_EventAvatarChange
-            AddHandler vp.EventAvatarDelete, AddressOf vpnet_EventAvatarDelete
-            AddHandler vp.EventObjectCreate, AddressOf vpnet_EventObjectCreate
-            AddHandler vp.EventObjectChange, AddressOf vpnet_EventObjectChange
-            AddHandler vp.EventObjectDelete, AddressOf vpnet_EventObjectDelete
-
-            AddHandler vp.EventObjectClick, AddressOf vpnet_EventObjectClick
-            AddHandler vp.EventQueryCellResult, AddressOf vpnet_EventQueryCellResult
-            AddHandler vp.EventQueryCellEnd, AddressOf vpnet_EventQueryCellEnd
-            AddHandler vp.CallbackObjectAdd, AddressOf vpnet_CallbackObjectAdd
-            AddHandler vp.EventUniverseDisconnect, AddressOf vpnet_EventUniverseDisconnect
-            AddHandler vp.EventWorldDisconnect, AddressOf vpnet_EventWorldDisconnect
-            AddHandler vp.EventChat, AddressOf vpnet_EventAvatarChat
-            AddHandler vp.EventUserAttributes, AddressOf vpnet_EventUserAttributes
-RepeatLogin:
+        Do Until State = connectionState.Connected
             Try
                 info("Logging into universe...")
-                vp.Connect(Bot.UniHost, Bot.UniPort)
-                vp.Wait(1000)
+                Bot.Instance.Connect(Bot.UniHost, Bot.UniPort)
+                Bot.Instance.Login(Bot.CitName, Bot.CitPass, Bot.LoginName)
+
+                info("Entering " & Bot.WorldName & "...")
+                Bot.Instance.Enter(Bot.WorldName)
+                Bot.Instance.UpdateAvatar(0, -100, 0, 0, 0)
+
+                State = connectionState.Connected
+                info("Bot is now connected and in-world")
+
             Catch ex As Exception
+                State = connectionState.Disconnected
+                nextDelay = Math.Min(delay * attempt, 60000)
+
+                info(String.Format("Attempt {0} to connect failed. Next attempt in {1}ms", attempt, nextDelay))
                 info(ex.Message)
-                Return False
+
+                attempt += 1
+                Thread.Sleep(nextDelay)
+
             End Try
+        Loop
+    End Sub
 
-            Try
-                vp.Login(Bot.CitName, Bot.CitPass, Bot.LoginName)
-            Catch ex As Exception
-                info(ex.Message)
-                If ex.Message.Contains("17") Then GoTo RepeatLogin 'Strange error. Just repeat login.
-                Return False
-            End Try
-            vp.Wait(10)
-            VpConnected = True
-            ProgramIsClosing = False
-            info("Entering " & Bot.WorldName & "...")
-            vp.Enter(Bot.WorldName)
-            vp.UpdateAvatar(0, -100, 0, 0, 0)
-
-        Catch ex As Exception
-            info(ex.Message)
-            Return False
-        End Try
-
-        Try
-            'Query cells
-            For CellXi As Integer = 240 To 260
-                For CellZi As Integer = -260 To -240
-                    vp.QueryCell(CellXi, CellZi)
-                Next
+    Sub CheckMarkers()
+        'Query cells
+        For CellXi As Integer = 240 To 260
+            For CellZi As Integer = -260 To -240
+                Bot.Instance.QueryCell(CellXi, CellZi)
             Next
-            Wait(5000) 'Wait for query and user avatar adds
+        Next
 
-            'Scan for old markers
-            For o = 1 To QueryData.GetUpperBound(0)
-                'Delete old markers
-                If QueryData(o).Action.Contains("name avmarker") Then
-                    info("Deleted old marker for " & QueryData(o).Description)
-                    'Delete old objects
-                    vp.DeleteObject(QueryData(o))
-                End If
-            Next
-            If VpConnected = False Then Return False
+        'Scan for old markers
+        For Each Q In QueryData
+            'Delete old markers
+            If Q.Action.Contains("name avmarker") Then
+                info("Deleted old marker for " & Q.Description)
+                'Delete old objects
+                Bot.Instance.DeleteObject(Q)
+            End If
+        Next
 
-        Catch ex As Exception
-            info(ex.Message)
-            Return False
-        End Try
-        If Options.EnableMapUpdates = True Then EnableMap = True
+        If Options.EnableMapUpdates Then EnableMap = True
 
         'Attempt to create marker objects
         If CreateMarkers() = False Then
@@ -200,13 +198,12 @@ RepeatLogin:
         End If
 
         info("Bot is now active. Use commands in-world to control.")
-        Return True
-    End Function
+    End Sub
 
     Private Sub vpnet_EventAvatarChat(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.EventData.Chat)
         Dim ChatMessage As String = LTrim(eventData.Message)
 
-        If ProgramIsClosing = True Then Exit Sub
+        If Exiting = True Then Exit Sub
         If VpConnected = False Then Exit Sub
 
         If eventData.ChatType = 1 Then 'Log console messages 
@@ -466,7 +463,7 @@ FoundSpace:
 
     Private Sub vpnet_EventAvatarChange(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.Structs.Avatar)
         If VpConnected = False Then Exit Sub
-        If ProgramIsClosing = True Then Exit Sub
+        If Exiting = True Then Exit Sub
         Dim i As Integer = FindUser(eventData.Session)
         'If i = 0 Or eventData.Session = 0 Or User(i).Online = False Or User(i).Name.Substring(0, 1) = "[" Then Exit Sub
         If i = 0 Or eventData.Session = 0 Or Users(i).Online = False Then Exit Sub
@@ -578,7 +575,7 @@ FoundID:
 
     Private Sub vpnet_EventObjectCreate(ByVal sender As VpNet.Core.Instance, ByVal sessionId As Integer, ByVal vpObject As VpNet.Core.Structs.VpObject)
         If vpObject.Action.Contains("name avmarker") Then Exit Sub 'Ignore bots own changes
-        If ProgramIsClosing = True Then Exit Sub 'Program is closing
+        If Exiting = True Then Exit Sub 'Program is closing
         Dim ObjectLine As String
 
         'PREFIXED TO THE VPPTSV1 FORMAT:
@@ -633,7 +630,7 @@ FoundID:
     End Sub
     Private Sub vpnet_EventObjectChange(ByVal sender As VpNet.Core.Instance, ByVal sessionId As Integer, ByVal vpObject As VpNet.Core.Structs.VpObject)
         If vpObject.Action.Contains("name avmarker") Then Exit Sub 'Ignore bots own changes
-        If ProgramIsClosing = True Then Exit Sub 'Program is closing
+        If Exiting = True Then Exit Sub 'Program is closing
         Dim ObjectLine As String
 
         'PREFIXED TO THE VPPTSV1 FORMAT:
@@ -681,7 +678,7 @@ FoundID:
         For n = 1 To Users.GetUpperBound(0) 'Ignore bots own changes
             If Users(n).MarkerObjectID = objectId Then Exit Sub
         Next
-        If ProgramIsClosing = True Then Exit Sub 'Program is closing
+        If Exiting = True Then Exit Sub 'Program is closing
 
 
         Dim ObjectLine As String

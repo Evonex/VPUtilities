@@ -98,7 +98,6 @@ Module modStuff
     Public MirrorDataOriginal() As Integer
     Public UserAttribute() As VpNet.Core.Structs.UserAttributes
 
-
     Function Val2Bool(ByVal Valu As Byte) As Boolean
         If Valu = 1 Then Return True
         If Valu = 0 Then Return False
