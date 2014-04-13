@@ -1,7 +1,11 @@
 Imports System.Globalization
 
 Module modStuff
-
+    Enum connectionState
+        Disconnected
+        Connecting
+        Connected
+    End Enum
     Class objBot
         Public Instance As VpNet.Core.Instance
         Public LoginName As String
