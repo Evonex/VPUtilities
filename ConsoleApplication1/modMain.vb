@@ -638,30 +638,25 @@ UpdateUserArray:
 
     Private Sub vpnet_EventUserAttributes(ByVal sender As VpNet.Core.Instance, ByVal userAttributes As VpNet.Core.Structs.UserAttributes)
         Citizens.Add(userAttributes)
+        Wiki.CitListLastUpdate = DateTime.Now
     End Sub
 
     Sub PollCitList()
         If Not Wiki.CitListPolling Then Return
 
-        ' All citizens have been collected toward the current target, begin next batch
-        If Citizens.Count = Wiki.CitListPollTarget Then
-            For count As Integer = 1 To 25
-                ' Conviniently, this skips the 0 user on first batch
-                Bot.Instance.UserAttributesById(count + Wiki.CitListPollTarget)
-            Next
-
-            Wiki.CitListLastUpdate = DateTime.UtcNow
-            Wiki.CitListPollTarget += 25
-            info(String.Format("Citizen poll: {0} found, 25 more to go", Citizens.Count))
-            Return
-        End If
-
-        ' Assume after a 30 second timeout of no further updates that all citizens have
+        ' Assume after a 5 second timeout of no further updates that all citizens have
         ' been collected. Begins upload to wiki
-        If DateTime.Now.Subtract(Wiki.CitListLastUpdate).TotalSeconds >= 30 Then
-            info("Citizen poll: Timed out, uploading gathered data to wiki")
+        If DateTime.Now.Subtract(Wiki.CitListLastUpdate).TotalSeconds >= 5 Then
+            info("Citizen poll: Timed out (" & Citizens.Count & " entries), uploading gathered data to wiki")
             Wiki.CitListPolling = False
             UploadWikiCitizenList()
+        Else
+            Wiki.CitListPollTarget += 1
+            Bot.Instance.UserAttributesById(Wiki.CitListPollTarget) ' Conviniently, this skips the 0 user on first batch
+
+            If Wiki.CitListPollTarget Mod 25 = 0 Then
+                info(String.Format("Citizen poll: {0} found so far", Citizens.Count))
+            End If
         End If
     End Sub
 
@@ -674,6 +669,7 @@ UpdateUserArray:
         Citizens.Clear()
         Wiki.CitListPolling = True
         Wiki.CitListPollTarget = 0
+        Wiki.CitListLastUpdate = DateTime.Now
         info("Begun polling of citizen list")
     End Sub
 
