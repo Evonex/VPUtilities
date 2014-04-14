@@ -1,5 +1,6 @@
 Imports System.Globalization
 Imports System.Collections.Generic
+Imports VpNet.Core.Structs
 
 Module modStuff
     Enum connectionState
@@ -35,7 +36,7 @@ Module modStuff
         Public X As Single
         Public Y As Single
         Public Z As Single
-        Public YAW As Single
+        Public Yaw As Single
         Public oldX As Single
         Public oldY As Single
         Public oldZ As Single
@@ -86,6 +87,10 @@ Module modStuff
 
     Public Bot As objBot
     Public Users As List(Of objUser)
+    Public Citizens As List(Of UserAttributes)
+    Public Queries As List(Of VpObject)
+    Public Groups As List(Of VpObject)
+    Public Mirrors As List(Of VpObject)
 
     Dim LastWriteLine As String
     Public Marker(31) As Integer 'Contains the querydata array index of each marker
@@ -94,11 +99,6 @@ Module modStuff
     Public Wiki As structWiki
     'Public World() As structWorld
     'Public WorldAttributes() As structWorldAttribs
-    Public QueryData() As VpNet.Core.Structs.VpObject
-    Public GroupData() As VpNet.Core.Structs.VpObject
-    Public MirrorData() As VpNet.Core.Structs.VpObject
-    Public MirrorDataOriginal() As Integer
-    Public UserAttribute() As VpNet.Core.Structs.UserAttributes
 
     Function Val2Bool(ByVal Valu As Byte) As Boolean
         If Valu = 1 Then Return True
@@ -120,19 +120,12 @@ Module modStuff
         Return Nothing
     End Function
 
-    Function FindUserByName(ByVal UserName As String) As Integer
-        Dim i As Integer
-        'Finds a users index in the user array by name
-
-        'World specific
-        For i = 1 To Users.GetUpperBound(0)
-            If Users(i).Name.ToLower = UserName.ToLower Then GoTo FoundUser
+    Function FindUserByName(ByVal UserName As String) As objUser
+        For Each User In Users
+            If User.Name.ToLower = UserName.ToLower Then Return User
         Next
-        'failed
-        Return 0
-        'success
-FoundUser:
-        Return i
+
+        Return Nothing
     End Function
 
 
@@ -146,6 +139,7 @@ FoundUser:
         'return the total seconds (which is a UNIX timestamp)
         Return span.TotalSeconds
     End Function
+
     Public Function UnixTimestampToDateTime(ByVal UnixTimeStamp As Long) As DateTime
         Return (New DateTime(1970, 1, 1, 0, 0, 0)).AddSeconds(UnixTimeStamp)
     End Function

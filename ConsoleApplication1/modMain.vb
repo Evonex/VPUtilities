@@ -23,14 +23,12 @@ Module modMain
 
     ' Dim LastMarker As Short
     Dim Exiting As Boolean
-    Dim SpinnyID As Integer
+    Dim SpinnyObj As VpObject
     Dim SpinnyD As Boolean
-    Dim UpdatingMap As Boolean 'Used to replace Timer2, which was for map updates. Indicates whether map marker updates are enabled.
-
+    
     Sub Main()
         Try
             LoadConfig()
-
             SetupBot()
 
             'Main loop
@@ -39,8 +37,11 @@ Module modMain
                 ' If DateTime.UtcNow.Subtract(Wiki.CitListLastUpdate).TotalDays >= 4 And Options.EnableWikiUpdates = True Then Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList() 'Update citizen list automatically
                 Select Case State
                     Case connectionState.Disconnected
+                        Queries.Clear()
+                        Users.Clear()
                         LoginBot()
                         CheckMarkers()
+                        info("Bot is now active. Use commands in-world to control.")
 
                     Case connectionState.Connected
                         Bot.Instance.Wait(0)
@@ -64,8 +65,8 @@ Module modMain
         If Options.EnableStatisticsLogging Then SaveStatisticsLog()
 
         info("Saving logs...")
-        objWriter.Close()
-        objWriterChat.Close()
+        objWriter.Close() : objWriter.Dispose()
+        objWriterChat.Close() : objWriterChat.Dispose()
 
         'Delete all the marker objects
         If Options.EnableMapUpdates Then
@@ -135,11 +136,6 @@ Module modMain
     End Sub
 
     Sub LoginBot()
-        ReDim Users(1)
-        ReDim QueryData(0)
-        ReDim UserAttribute(0)
-        ' LastMarker = 0
-
         Dim attempt = 1
         Dim delay = 1000
         Dim nextDelay As Integer
@@ -178,33 +174,10 @@ Module modMain
                 Bot.Instance.QueryCell(CellXi, CellZi)
             Next
         Next
-
-        'Scan for old markers
-        For Each Q In QueryData
-            'Delete old markers
-            If Q.Action.Contains("name avmarker") Then
-                info("Deleted old marker for " & Q.Description)
-                'Delete old objects
-                Bot.Instance.DeleteObject(Q)
-            End If
-        Next
-
-        If Options.EnableMapUpdates Then UpdatingMap = True
-
-        'Attempt to create marker objects
-        If CreateMarkers() = False Then
-            UpdatingMap = False
-            Return False
-        End If
-
-        info("Bot is now active. Use commands in-world to control.")
     End Sub
 
     Private Sub vpnet_EventAvatarChat(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.EventData.Chat)
         Dim ChatMessage As String = LTrim(eventData.Message)
-
-        If Exiting = True Then Exit Sub
-        If VpConnected = False Then Exit Sub
 
         If eventData.ChatType = 1 Then 'Log console messages 
             If eventData.Username = "" Then
@@ -222,16 +195,16 @@ Module modMain
 
         If eventData.ChatType = 1 Then Exit Sub 'No console messages
 
-        Dim un As Integer = FindUser(eventData.Session) 'Find user ID
-        If un = 0 Then Exit Sub
-        Users(un).statsActiveInLastHour = True
+        Dim User = FindUser(eventData.Session) 'Find user ID
+        If User Is Nothing Then Return
+        User.statsActiveInLastHour = True
 
         '  User(un).LastActive = DateTime.Now
 
         If eventData.Message.Length < 2 Then Exit Sub
         '  Console.WriteLine(eventData.Message)
         'Process commands
-        If eventData.Message.ToLower = Bot.LoginName.ToLower & " version" Then vpSay("VP-Utilities Bot by Chris Daxon.", Users(un).Session)
+        If eventData.Message.ToLower = Bot.LoginName.ToLower & " version" Then vpSay("VP-Utilities Bot by Chris Daxon.", User.Session)
 
         If eventData.Message.Substring(0, 2).ToLower = "u:" Then
             Dim SelectMsg As String = eventData.Message.Substring(2, eventData.Message.Length - 2).ToLower
@@ -241,42 +214,42 @@ Module modMain
 
             Select Case SelectMsg
                 Case "version"
-                    vpSay("VP-Utilities Bot by Chris Daxon.", Users(un).Session)
+                    vpSay("VP-Utilities Bot by Chris Daxon.", User.Session)
                 Case "coords"
-                    vpSay("Coordinates: " & Users(un).X & " " & Users(un).Y & " " & Users(un).Z, Users(un).Session)
+                    vpSay("Coordinates: " & User.X & " " & User.Y & " " & User.Z, User.Session)
                 Case "exit"
-                    If Users(un).Session = Bot.Owner Then EndProgram()
+                    If User.Session = Bot.Owner Then EndProgram()
                 Case "freeze"
-                    If Users(un).Session = Bot.Owner And eventData.Message.Length > 10 Then
+                    If User.Session = Bot.Owner And eventData.Message.Length > 10 Then
                         Dim CmdSplit() As String
                         CmdSplit = Split(eventData.Message.Substring(2, eventData.Message.Length - 2), " ", 2) 'Easiest way
-                        Dim k As Integer = FindUserByName(CmdSplit(1))
-                        If k = 0 Then vpSay("No such user.", Users(un).Session) : Exit Sub
-                        Users(k).AvatarFrozen = True
-                        vpSay(Users(k).Name & " has been frozen.", Users(un).Session)
+                        Dim Target = FindUserByName(CmdSplit(1))
+                        If Target Is Nothing Then vpSay("No such user.", User.Session) : Exit Sub
+                        Target.AvatarFrozen = True
+                        vpSay(Target.Name & " has been frozen.", User.Session)
                     End If
                 Case "unfreeze"
-                    If Users(un).Session = Bot.Owner And eventData.Message.Length > 10 Then
+                    If User.Session = Bot.Owner And eventData.Message.Length > 10 Then
                         Dim CmdSplit() As String
                         CmdSplit = Split(eventData.Message.Substring(2, eventData.Message.Length - 2), " ", 2) 'Easiest way
-                        Dim k As Integer = FindUserByName(CmdSplit(1))
-                        If k = 0 Then vpSay("No such user.", Users(un).Session) : Exit Sub
-                        Users(k).AvatarFrozen = False
-                        vpSay(Users(k).Name & " has been defrosted.", Users(un).Session)
+                        Dim Target = FindUserByName(CmdSplit(1))
+                        If Target Is Nothing Then vpSay("No such user.", User.Session) : Exit Sub
+                        Target.AvatarFrozen = False
+                        vpSay(Target.Name & " has been defrosted.", User.Session)
                     End If
                 Case "updatecitlist"
-                    If Users(un).Session <> Bot.Owner Then Exit Select
+                    If User.Session <> Bot.Owner Then Exit Select
                     Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList()
 
                 Case "add mirror point"
-                    vpSay("Command not implemented.", Users(un).Session) : Exit Select
+                    vpSay("Command not implemented.", User.Session) : Exit Select
 #If False Then ' Dead code
                     'we need directions and for individual users
                     Dim newObject As New VpNet.Core.Structs.VpObject
-                    newObject.Position = New VpNet.Core.Structs.Vector3(Users(un).X, Users(un).Y, Users(un).Z)
+                    newObject.Position = New VpNet.Core.Structs.Vector3(User.X, User.Y, User.Z)
                     newObject.Rotation = New VpNet.Core.Structs.Vector3(0, 90, 0)
                     newObject.Angle = Single.PositiveInfinity
-                    newObject.Description = "Mirror Point" & vbCrLf & "Owner: " & Users(un).Name
+                    newObject.Description = "Mirror Point" & vbCrLf & "Owner: " & User.Name
                     newObject.Action = "create color green, name mirrorpoint"
                     newObject.Model = "w1pan_1000e"
                     newObject.ReferenceNumber = (1000 + un)
@@ -287,7 +260,7 @@ Module modMain
                     End Try
 #End If
                 Case Else
-                    vpSay("Command not recognised.", Users(un).Session)
+                    vpSay("Command not recognised.", User.Session)
             End Select
         End If
     End Sub
@@ -297,58 +270,67 @@ Module modMain
         'If objectData.ReferenceNumber > 1000 Then User(objectData.ReferenceNumber - 1000).MirrorObjectData = objectData : Exit Sub
 
         'Update users markernumber with their objectId
-        If objectData.ReferenceNumber > Users.GetUpperBound(0) Or objectData.ReferenceNumber <= 0 Then Exit Sub
-        Users(objectData.ReferenceNumber).MarkerObjectID = objectData.Id
+        Dim User = FindUser(objectData.ReferenceNumber)
+
+        If User IsNot Nothing Then
+            User.MarkerObjectID = objectData.Id
+            User.MarkerPending = False
+        End If
         '   Console.WriteLine(User(objectData.ReferenceNumber).Name & ": " & objectData.ReferenceNumber)
     End Sub
 
-    Private Sub vpnet_EventQueryCellResult(ByVal sender As VpNet.Core.Instance, ByVal objectData As VpNet.Core.Structs.VpObject)
-        'Save object data
-        ReDim Preserve QueryData(QueryData.GetUpperBound(0) + 1)
-        QueryData(QueryData.GetUpperBound(0)) = objectData
-        QueryData(QueryData.GetUpperBound(0)).ReferenceNumber = -1
+    Private Sub vpnet_EventQueryCellResult(ByVal sender As VpNet.Core.Instance, ByVal obj As VpNet.Core.Structs.VpObject)
+        'Delete old markers
+        If obj.Action.Contains("name avmarker") Then
+            Dim markerUser = FindUserByName(obj.Description)
 
-        If objectData.Action.Contains("name spinny2") Then SpinnyID = QueryData.GetUpperBound(0)
+            If markerUser Is Nothing Or markerUser.MarkerObjectID <> obj.Id Then
+                info("Queued delete of old marker for " & obj.Description)
+                Bot.Instance.DeleteObject(obj)
+
+                Return
+            End If
+        End If
+
+        'Save object data
+        obj.ReferenceNumber = -1
+        Queries.Add(obj)
+
+        If obj.Action.Contains("name spinny2") Then SpinnyObj = obj
     End Sub
 
     Private Sub vpnet_EventQueryCellEnd(ByVal sender As VpNet.Core.Instance, ByVal CellX As Integer, ByVal CellZ As Integer)
     End Sub
 
-    Function CreateMarkers() As Boolean
-        If Not UpdatingMap Then Return True 'Wait until all avatars have entered first - to avoid duplicates
-        If Not Options.EnableMapUpdates Then Return False
+    Sub CreateMarker(ByRef User As objUser)
+        If Not Options.EnableMapUpdates Then Return
 
         Randomize()
 
-        For Each User In Users
-            ' Skip users that already have markers
-            If User.MarkerObjectID <> -1 Or User.MarkerPending Then Continue For
+        ' Skip users that already have markers or are waiting for them
+        If User.MarkerObjectID <> -1 Or User.MarkerPending Then Return
 
-            ' No markers for bots, except for [Cat]
-            If User.Name.Substring(0, 1) = "[" And User.Name <> "[Cat]" Then Continue For
+        ' No markers for bots, except for [Cat]
+        If User.Name.Substring(0, 1) = "[" And User.Name <> "[Cat]" Then Return
 
-            User.MarkerObjectAction = "create solid no,color " & Hex(Int(Rnd() * 255)).PadRight(2, "0") & Hex(Int(Rnd() * 255)).PadRight(2, "0") & Hex(Int(Rnd() * 255)).PadRight(2, "0") & ",move {x} 0 {z} time={t} wait=9e9,rotate {r} time={rt} wait=9e9 nosync,name avmarker"
+        User.MarkerObjectAction = "create solid no,color " & Hex(Int(Rnd() * 255)).PadRight(2, "0") & Hex(Int(Rnd() * 255)).PadRight(2, "0") & Hex(Int(Rnd() * 255)).PadRight(2, "0") & ",move {x} 0 {z} time={t} wait=9e9,rotate {r} time={rt} wait=9e9 nosync,name avmarker"
 
-            Dim markerObject As New VpNet.Core.Structs.VpObject
-            markerObject.Position = New VpNet.Core.Structs.Vector3(250, 0.014, -250)
-            markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, 0, 0)
-            markerObject.Angle = Single.PositiveInfinity
-            markerObject.Description = User.Name
-            markerObject.Action = User.MarkerObjectAction.Replace("{x}", 0).Replace("{z}", 0).Replace("{t}", 0).Replace("{r}", 0).Replace("{rt}", 0)
-            markerObject.Model = "cyfigure.rwx"
-            markerObject.ReferenceNumber = User.Session
+        Dim markerObject As New VpNet.Core.Structs.VpObject
+        markerObject.Position = New VpNet.Core.Structs.Vector3(250, 0.014, -250)
+        markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, 0, 0)
+        markerObject.Angle = Single.PositiveInfinity
+        markerObject.Description = User.Name
+        markerObject.Action = User.MarkerObjectAction.Replace("{x}", 0).Replace("{z}", 0).Replace("{t}", 0).Replace("{r}", 0).Replace("{rt}", 0)
+        markerObject.Model = "cyfigure.rwx"
+        markerObject.ReferenceNumber = User.Session
 
-            Bot.Instance.AddObject(markerObject)
-            User.MarkerPending = True
-            info("Queued add marker for " & User.Name)
-        Next
-
-        'All markers created
-        Return True
-    End Function
+        Bot.Instance.AddObject(markerObject)
+        User.MarkerPending = True
+        info("Queued add marker for " & User.Name)
+    End Sub
 
     Sub UpdateMarker(ByRef User As objUser) 'Updates the map marker for an avatar
-        If UpdatingMap = False Then Return
+        If Not Options.EnableMapUpdates Then Return
 
         'If nessecary, update map marker location
         If Not User.MovedSinceLastMarkerUpdate Or User.Session = 0 Or User.MarkerObjectID = -1 Then Return
@@ -359,7 +341,7 @@ Module modMain
         Dim movZ As Single = (User.Z - User.oldZ) / 15 'TODO: make this more precise, could even use the yaw of the user
         Dim movTime As Single = 0.3 'Move must finish by this time; therefore controls the speed.
 
-        Dim markerYAW As Single = User.YAW '-(User(i).YAW) + 180
+        Dim markerYAW As Single = User.Yaw '-(User(i).YAW) + 180
         Dim markeroldYAW As Single = User.oldYAW '-(User(i).oldYAW) + 180
         Dim rotYAW As Integer = markerYAW - markeroldYAW '(markerYAW Mod 360) - (markeroldYAW Mod 360)
         '  If rotYAW < 0 Then rotYAW += 360
@@ -376,11 +358,11 @@ Module modMain
         Dim markerObject As New VpNet.Core.Structs.VpObject
         markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User.oldX / 100), 0.014, -250 + (User.oldZ / 100))
         'markerObject.Position = New VpNet.Core.Structs.Vector3(250 + (User(i).X / 100), 0.014, -250 + (User(i).Z / 100))
-        markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, -(User.YAW) + 180, 0)
+        markerObject.Rotation = New VpNet.Core.Structs.Vector3(0, -(User.Yaw) + 180, 0)
         markerObject.Angle = Single.PositiveInfinity
         markerObject.Description = User.Name
         markerObject.Action = User.MarkerObjectAction.Replace("{x}", movX).Replace("{z}", movZ).Replace("{t}", movTime).Replace("{r}", rotY).Replace("{rt}", rotTime)
-        markerObject.ReferenceNumber = -1
+        markerObject.ReferenceNumber = User.Session
         markerObject.Model = "cyfigure.rwx"
         markerObject.Id = User.MarkerObjectID
 
@@ -390,7 +372,7 @@ Module modMain
         User.oldX = User.X
         User.oldY = User.Y
         User.oldZ = User.Z
-        User.oldYAW = User.YAW
+        User.oldYAW = User.Yaw
     End Sub
 
     Private Sub vpnet_EventAvatarAdd(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.Structs.Avatar)
@@ -418,19 +400,18 @@ Module modMain
         End If
 
         ChatLogAppend("[" & DateTime.UtcNow.ToString(New CultureInfo("en-GB")) & "] ENTERS: " & eventData.Name & ", " & eventData.Id & ", " & eventData.Session)
-
-        CreateMarkers()
+        CreateMarker(newUser)
     End Sub
 
     Private Sub vpnet_EventAvatarChange(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.Structs.Avatar)
         Dim User = FindUser(eventData.Session)
         If User Is Nothing Then Return
 
-        If User.X <> eventData.X Or User.Y <> eventData.Y Or User.Z <> eventData.Z Or User.YAW <> eventData.Yaw Then
+        If User.X <> eventData.X Or User.Y <> eventData.Y Or User.Z <> eventData.Z Or User.Yaw <> eventData.Yaw Then
 
             If User.X = eventData.X And User.Y = eventData.Y And User.Z = eventData.Z Then
                 'Ignore small changes in YAW
-                Dim YAWdiff As Single = Math.Abs(eventData.Yaw - User.YAW)
+                Dim YAWdiff As Single = Math.Abs(eventData.Yaw - User.Yaw)
                 If YAWdiff < 0.3 Then GoTo UpdateUserArray 'Ignore small changes in YAW
             End If
 
@@ -446,7 +427,7 @@ UpdateUserArray:
         User.X = eventData.X
         User.Y = eventData.Y
         User.Z = eventData.Z
-        User.YAW = eventData.Yaw
+        User.Yaw = eventData.Yaw
         User.Pitch = eventData.Pitch
         User.AvatarType = eventData.AvatarType
 
@@ -466,9 +447,9 @@ UpdateUserArray:
         'Delete marker object
         Dim markerObject As New VpNet.Core.Structs.VpObject
         markerObject.Id = User.MarkerObjectID
-        User.MarkerObjectID = -1
         Bot.Instance.DeleteObject(markerObject)
 
+        Users.Remove(User)
         ChatLogAppend("[" & DateTime.UtcNow.ToString(New CultureInfo("en-GB")) & "] EXITS: " & User.Name & ", " & User.Id & ", " & User.Session)
     End Sub
 
@@ -483,11 +464,11 @@ UpdateUserArray:
             End If
         Next
 
-        If QueryData Is Nothing Then Return
+        If Queries Is Nothing Then Return
 
         ' Check if MapTile was clicked
         Dim MapTile As VpObject
-        For Each Q In QueryData
+        For Each Q In Queries
             If Q.Id = objectId Then
                 MapTile = Q
                 Exit For
@@ -523,9 +504,9 @@ UpdateUserArray:
         'Object ID
 
         If Options.EnableObjectLogging = True Then
-            Dim userId As Integer
-            Dim User = FindUser(sessionId)
-            If User Is Nothing Then userId = 0 Else userId = User.Id
+            Dim userId = 0
+            Dim user = FindUser(sessionId)
+            If user IsNot Nothing Then userId = user.Id
 
             ObjectLine = "0" & vbTab & sessionId & vbTab & userId & vbTab & vpObject.Id & vbTab & vpObject.Owner & vbTab & vpObject.Time.ToString & vbTab & vpObject.Position.X & vbTab & vpObject.Position.Y & vbTab & vpObject.Position.Z & vbTab & vpObject.Rotation.X & vbTab & vpObject.Rotation.Y & vbTab & vpObject.Rotation.Z & vbTab & vpObject.Angle & vbTab & vpObject.ObjectType & vbTab & Escape(vpObject.Model) & vbTab & Escape(vpObject.Description) & vbTab & Escape(vpObject.Action)
 
@@ -535,8 +516,7 @@ UpdateUserArray:
         Exit Sub 'TODO: Mirror code (for making builds that mirror each side) is below
         For Each User In Users
             If User.MirrorObjectData.Id > 0 Then
-                ReDim Preserve MirrorDataOriginal(MirrorDataOriginal.GetUpperBound(0) + 1)
-                MirrorDataOriginal(MirrorDataOriginal.GetUpperBound(0)) = vpObject.Id
+                Mirrors.Add(vpObject)
 
                 'Now create the mirror
                 'either add or subtract 180 (half of a full circle, 360 degrees),
@@ -548,14 +528,15 @@ UpdateUserArray:
         Next
     End Sub
 
-    Sub ChangeMirrorObject(ByVal o As Integer, ByVal n As Integer)
-        If MirrorData(o).Position.X < Users(n).MirrorObjectData.Position.X Then Exit Sub
+    Sub ChangeMirrorObject(ByRef mirrObj As VpObject, ByRef User As objUser)
+#If False Then ' Figure out what this does and re-enable later
+        If mirrObj.Position.X < User.MirrorObjectData.Position.X Then Exit Sub
         'X> mirror only
 
-        Dim offsetX As Integer = MirrorData(o).Position.X - Users(n).MirrorObjectData.Position.X
+        Dim offsetX As Integer = mirrObj.Position.X - User.MirrorObjectData.Position.X
 
         Dim newObject As New VpNet.Core.Structs.VpObject
-        newObject = MirrorData(o)
+        newObject = Mirrors(mirrObj)
 
         'newObject.Position.X = newObject.Position.X - offsetX 'TODO: Error	3	Expression is a value and therefore cannot be the target of an assignment.	E:\Documents and Settings\Chris\My Documents\Visual Studio 2010\Projects\VPUtilities\ConsoleApplication1\ConsoleApplication1\modMain.vb	540	9	ConsoleApplication1
         newObject.Rotation = New VpNet.Core.Structs.Vector3(0, 90, 0)
@@ -564,10 +545,11 @@ UpdateUserArray:
         Catch ex As Exception
             info(ex.Message)
         End Try
+#End If
     End Sub
+
     Private Sub vpnet_EventObjectChange(ByVal sender As VpNet.Core.Instance, ByVal sessionId As Integer, ByVal vpObject As VpNet.Core.Structs.VpObject)
         If vpObject.Action.Contains("name avmarker") Then Exit Sub 'Ignore bots own changes
-        If Exiting = True Then Exit Sub 'Program is closing
         Dim ObjectLine As String
 
         'PREFIXED TO THE VPPTSV1 FORMAT:
@@ -576,47 +558,43 @@ UpdateUserArray:
         'User ID
         'Object ID
         If Options.EnableObjectLogging = True Then
-            Dim r As Integer
-            Dim userId As Integer
-            r = FindUser(sessionId)
-            If r = 0 Then userId = 0 Else userId = Users(r).Id
+            Dim userId = 0
+            Dim user = FindUser(sessionId)
+            If user IsNot Nothing Then userId = user.Id
 
             ObjectLine = "1" & vbTab & sessionId & vbTab & userId & vbTab & vpObject.Id & vbTab & vpObject.Owner & vbTab & vpObject.Time.ToString & vbTab & vpObject.Position.X & vbTab & vpObject.Position.Y & vbTab & vpObject.Position.Z & vbTab & vpObject.Rotation.X & vbTab & vpObject.Rotation.Y & vbTab & vpObject.Rotation.Z & vbTab & vpObject.Angle & vbTab & vpObject.ObjectType & vbTab & Escape(vpObject.Model) & vbTab & Escape(vpObject.Description) & vbTab & Escape(vpObject.Action)
 
             objWriter.WriteLine(ObjectLine)
         End If
 
-        Exit Sub 'TODO: Mirror object code
-
+        'TODO: Mirror object code
+#If False Then
         'Update mirror object location 
         If vpObject.Action.Contains("name mirrorpoint") Then
-            For n = 0 To Users.GetUpperBound(0)
-                If Users(n).Id = vpObject.Owner Then Users(n).MirrorObjectData = vpObject
+            For Each User In Users
+                If User.Id = vpObject.Owner Then User.MirrorObjectData = vpObject
             Next
         End If
 
         'Mirror objects
-        For n = 0 To UBound(Users)
-            If Users(n).MirrorObjectData.Id <> 0 Then
+        For Each User In Users
+            If User.MirrorObjectData.Id = 0 Then Continue For
 
-                For o = 1 To MirrorDataOriginal.GetUpperBound(0)
-                    If MirrorDataOriginal(o) = vpObject.Id Then
-                        ChangeMirrorObject(o, n)
-                        '<X mirror
-                    End If
-
-                Next
-            End If
+            For Each Mirror In Mirrors
+                If Mirror.Id = vpObject.Id Then
+                    ChangeMirrorObject(Mirror, User)
+                    '<X mirror
+                End If
+            Next
         Next
+#End If
 
     End Sub
 
     Private Sub vpnet_EventObjectDelete(ByVal sender As VpNet.Core.Instance, ByVal sessionId As Integer, ByVal objectId As Integer)
-        For n = 1 To Users.GetUpperBound(0) 'Ignore bots own changes
-            If Users(n).MarkerObjectID = objectId Then Exit Sub
+        For Each User In Users 'Ignore bots own changes
+            If User.MarkerObjectID = objectId Then Exit Sub
         Next
-        If Exiting = True Then Exit Sub 'Program is closing
-
 
         Dim ObjectLine As String
 
@@ -626,10 +604,9 @@ UpdateUserArray:
         'User ID
         'Object ID
         If Options.EnableObjectLogging = True Then
-            Dim r As Integer
-            Dim userId As Integer
-            r = FindUser(sessionId)
-            If r = 0 Then userId = 0 Else userId = Users(r).Id
+            Dim userId = 0
+            Dim user = FindUser(sessionId)
+            If user IsNot Nothing Then userId = user.Id
 
             ObjectLine = "2" & vbTab & sessionId & vbTab & userId & vbTab & objectId & vbTab & vbTab & vbTab & vbTab & vbTab & vbTab & vbTab & vbTab & vbTab & vbTab & vbTab & vbTab & vbTab
 
@@ -638,38 +615,17 @@ UpdateUserArray:
     End Sub
 
     Private Sub vpnet_EventWorldDisconnect(ByVal sender As VpNet.Core.Instance)
-        VpConnected = False
-        If UpdatingMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
-        info("World connection lost. Attempting to reconnect...")
-        On Error Resume Next
-
-        Bot.Instance.Dispose()
-
-        For i As Integer = 1 To Users.GetUpperBound(0)
-            ClearUserData(i)
-        Next
-
-        UpdatingMap = False
+        State = connectionState.Disconnected
+        info("World connection lost")
     End Sub
 
     Private Sub vpnet_EventUniverseDisconnect(ByVal sender As VpNet.Core.Instance)
-        VpConnected = False
-        If UpdatingMap = False Then Exit Sub 'May have received a disconnect due to failed login attempt, this will be handled by the login procedure
-        info("Universe connection lost. Attempting to reconnect...")
-        Try
-            Bot.Instance.Dispose()
-        Catch ex As Exception
-        End Try
-        For i As Integer = 1 To Users.GetUpperBound(0)
-            ClearUserData(i)
-        Next
-
-        UpdatingMap = False
+        State = connectionState.Disconnected
+        info("Universe connection lost")
     End Sub
 
     Private Sub vpnet_EventUserAttributes(ByVal sender As VpNet.Core.Instance, ByVal userAttributes As VpNet.Core.Structs.UserAttributes)
-        ReDim Preserve UserAttribute(UserAttribute.GetUpperBound(0) + 1)
-        UserAttribute(UserAttribute.GetUpperBound(0)) = userAttributes
+        Citizens.Add(userAttributes)
     End Sub
 
     Sub UpdateWikiCitizenList()
@@ -680,11 +636,8 @@ UpdateUserArray:
             ConfigINI.SetKeyValue("Wiki", "CitListLastUpdate", Wiki.CitListLastUpdate.ToString(New CultureInfo("en-GB")))
             ConfigINI.Save(ConfigPath)
 
-            Erase UserAttribute
-            ReDim UserAttribute(0)
-
             'TODO: This could be redone in a neater way
-
+            Citizens.Clear()
             Dim LastNumbers1 As Integer = 0
             Dim LastNumbers2 As Integer = 100
             Dim lGrace As Byte = 3
@@ -771,29 +724,23 @@ Skip3:
             If DateTime.UtcNow.Hour = 0 Then LastHour = 23 Else LastHour = (DateTime.UtcNow.Hour - 1)
             'Inactive users
             VPStats.UserActivity += "," & (LastHour).ToString & "|"
-            For i As Integer = 1 To Users.GetUpperBound(0)
-                If Users(i).Session <> 0 And Users(i).Name.Length > 2 Then
-                    If Users(i).Name.Substring(0, 1) <> "[" And Users(i).statsActiveInLastHour = False Then
-                        VPStats.UserActivity += ":" & Users(i).Id
+            For Each User In Users
+                If User.Session <> 0 And User.Name.Length > 2 Then
+                    If User.Name.Substring(0, 1) <> "[" And User.statsActiveInLastHour = False Then
+                        VPStats.UserActivity += ":" & User.Id
                     End If
                 End If
             Next
             'Active users
             VPStats.UserActivity += "|"
-            For i As Integer = 1 To Users.GetUpperBound(0)
-                If Users(i).Session <> 0 And Users(i).Name.Length > 2 Then
-                    If Users(i).Name.Substring(0, 1) <> "[" And Users(i).statsActiveInLastHour = True Then
-                        VPStats.UserActivity += ":" & Users(i).Id : Users(i).statsActiveInLastHour = False
+            For Each User In Users
+                If User.Session <> 0 And User.Name.Length > 2 Then
+                    If User.Name.Substring(0, 1) <> "[" And User.statsActiveInLastHour = True Then
+                        VPStats.UserActivity += ":" & User.Id : User.statsActiveInLastHour = False
                     End If
                 End If
-
             Next
             'This will still be tainted with duplicate logins, but that can be delt with when processing the stats.dat file for the actual stats.
-
-            'Clear out the array of all the offline users each hour
-            For i As Integer = 1 To Users.GetUpperBound(0)
-                If Users(i).Online = False Then ClearUserData(i)
-            Next
         Catch ex As Exception 'TODO: This can be removed once any bugs here are fully fixed
             info("EXCEPTION: " & ex.Message)
             Exit Sub
@@ -804,23 +751,24 @@ Skip3:
         Try
             If VPStats.UserActivity = "" Then Return
 
-
             VPStats.LastHour = DateTime.UtcNow : UpdateStatisticsLog() 'Log for 23:00 - The previous update won't notice because the hour wasn't more than the previous hour - so we need to make a log for the last hour, as midnight is still
-
 
             'Save the last stats update time
             ConfigINI.SetKeyValue("Stats", "LastSave", VPStats.LastSave.ToString(New CultureInfo("en-GB")))
             ConfigINI.Save(ConfigPath)
 
             'Save user stats to log file
-            Dim outText As String = Date.UtcNow.AddDays(-1).ToString(New CultureInfo("en-GB")) & VPStats.UserActivity
-            Dim objWriter3 As System.IO.TextWriter = New System.IO.StreamWriter(StatsDatPath, True)
-            objWriter3.WriteLine(outText & vbNewLine)
-            objWriter3.Close()
+            'The "Using" block auto-disposes of the StreamWriter at the end
+            Using StatsDatWriter = New System.IO.StreamWriter(StatsDatPath, True)
+                Dim outText As String = Date.UtcNow.AddDays(-1).ToString(New CultureInfo("en-GB")) & VPStats.UserActivity
+
+                StatsDatWriter.WriteLine(outText & vbNewLine)
+                StatsDatWriter.Close()
+            End Using
 
             VPStats.UserActivity = ""
-            For i = 1 To Users.GetUpperBound(0)
-                Users(i).statsActiveInLastHour = False
+            For Each User In Users
+                User.statsActiveInLastHour = False
             Next
 
             info("Saved today's statistics logs.")
