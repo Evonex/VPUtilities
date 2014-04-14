@@ -35,23 +35,32 @@ Module modMain
             While Not Exiting
 
                 ' If DateTime.UtcNow.Subtract(Wiki.CitListLastUpdate).TotalDays >= 4 And Options.EnableWikiUpdates = True Then Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList() 'Update citizen list automatically
+                ' Bot updates
                 Select Case State
                     Case connectionState.Disconnected
+                        ' State reset
+                        Wiki.CitListPolling = False
                         Queries.Clear()
                         Users.Clear()
+
                         LoginBot()
-                        CheckMarkers()
+                        CheckMarkers() ' Only needs to be called after connection
                         info("Bot is now active. Use commands in-world to control.")
 
                     Case connectionState.Connected
                         Bot.Instance.Wait(0)
                 End Select
 
+                ' Update statistics
                 If Options.EnableStatisticsLogging Then
                     If DateTime.UtcNow.Hour > VPStats.LastHour.Hour Then VPStats.LastHour = DateTime.UtcNow : UpdateStatisticsLog()
                     If DateTime.UtcNow.Day > VPStats.LastSave.Day Then VPStats.LastSave = DateTime.UtcNow : SaveStatisticsLog()
                 End If
 
+                ' Update cit list
+                If Options.EnableWikiUpdates Then
+                    PollCitList()
+                End If
             End While
 
             EndProgram() 'End the program
@@ -239,7 +248,7 @@ Module modMain
                     End If
                 Case "updatecitlist"
                     If User.Session <> Bot.Owner Then Exit Select
-                    Wiki.CitListLastUpdate = DateTime.UtcNow : UpdateWikiCitizenList()
+                    UpdateWikiCitizenList()
 
                 Case "add mirror point"
                     vpSay("Command not implemented.", User.Session) : Exit Select
@@ -626,91 +635,87 @@ UpdateUserArray:
 
     Private Sub vpnet_EventUserAttributes(ByVal sender As VpNet.Core.Instance, ByVal userAttributes As VpNet.Core.Structs.UserAttributes)
         Citizens.Add(userAttributes)
+        Wiki.CitListLastUpdate = DateTime.UtcNow
+    End Sub
+
+    Sub PollCitList()
+        If Not Wiki.CitListPolling Then Return
+
+        ' All citizens have been collected toward the current target, begin next batch
+        If Citizens.Count = Wiki.CitListPollTarget Then
+            For count As Integer = 1 To 25
+                ' Conviniently, this skips the 0 user on first batch
+                Bot.Instance.UserAttributesById(count + Wiki.CitListPollTarget)
+            Next
+
+            Wiki.CitListPollTarget += 25
+            Return
+        End If
+
+        ' Assume after a 30 second timeout of no further updates that all citizens have
+        ' been collected. Begins upload to wiki
+        If DateTime.Now.Subtract(Wiki.CitListLastUpdate).TotalSeconds >= 30 Then
+            Wiki.CitListPolling = False
+            UploadWikiCitizenList()
+        End If
     End Sub
 
     Sub UpdateWikiCitizenList()
-        Try
-            info("Updating wiki citizen list...")
+        If Wiki.CitListPolling Then
+            info("Citizen list update is already in progress")
+            Return
+        End If
 
-            'Save the last wiki update time
-            ConfigINI.SetKeyValue("Wiki", "CitListLastUpdate", Wiki.CitListLastUpdate.ToString(New CultureInfo("en-GB")))
-            ConfigINI.Save(ConfigPath)
+        Citizens.Clear()
+        Wiki.CitListPolling = True
+        Wiki.CitListPollTarget = 0
+        info("Begun polling of citizen list")
+    End Sub
 
-            'TODO: This could be redone in a neater way
-            Citizens.Clear()
-            Dim LastNumbers1 As Integer = 0
-            Dim LastNumbers2 As Integer = 100
-            Dim lGrace As Byte = 3
-RequestCitizens:
-            'Get the citizen list
-            For l As Integer = LastNumbers1 To LastNumbers2
-                If l = 0 And LastNumbers1 = 0 Then GoTo NextAttribute 'Avoid querying for citizen 0
-                Bot.Instance.UserAttributesById(l)
-                Dim curtime As DateTime = DateTime.Now
-                Do
-                    Bot.Instance.Wait(1)
-                    If DateTime.Now.Subtract(curtime).TotalSeconds >= 5 Then ReDim Preserve UserAttribute(UserAttribute.GetUpperBound(0) + 1) : lGrace = lGrace - 1 : GoTo NextAttribute
-                Loop Until UserAttribute.GetUpperBound(0) = l
-                'Console.WriteLine(UserAttribute(UserAttribute.GetUpperBound(0)).Name)
+    Sub UploadWikiCitizenList()
+        'Save the last wiki update time
+        ConfigINI.SetKeyValue("Wiki", "CitListLastUpdate", Wiki.CitListLastUpdate.ToString(New CultureInfo("en-GB")))
+        ConfigINI.Save(ConfigPath)
 
-NextAttribute:
-                If lGrace <= 0 Then GoTo UploadCitizenList 'Too many unresponsive citizens
-                If l = LastNumbers2 Then Exit For 'TODO: quick fix for weird bug that makes it go to 101?
-            Next
+        Dim outText As String = Replace(My.Resources.WikiText1a, "{date}", Wiki.CitListLastUpdate.ToString(New CultureInfo("en-GB")))
 
-            LastNumbers1 += UserAttribute.GetUpperBound(0) + 1
-            LastNumbers2 += (UserAttribute.GetUpperBound(0) + 101)
-            GoTo RequestCitizens
+        For Each Citizen In Citizens
+            If Citizen.Name = "" Then Continue For
+            'Generate online time string
+            Dim nTimeInSeconds As Long, nHours As Long, nMinutes As Long, nSeconds As Long, nDays As Long
+            nTimeInSeconds = Citizen.OnlineTime
+            nDays = nTimeInSeconds \ 86400
+            nHours = (nTimeInSeconds \ 3600) - nDays * 24
+            nTimeInSeconds = nTimeInSeconds Mod 3600
+            nMinutes = nTimeInSeconds \ 60
+            nSeconds = nTimeInSeconds Mod 60
 
-UploadCitizenList:
+            'Add column to output text
+            If DateTime.Now.Subtract(UnixTimestampToDateTime(Citizen.RegistrationTime)).TotalDays < 30 Then
+                outText = outText & vbNewLine & "|-" & vbNewLine & "| " & Citizen.Id & " || [[User:" & Citizen.Name.Replace(" ", "_") & "|" & Citizen.Name & "]] || <span style=""color:red"">'''" & UnixTimestampToDateTime(Citizen.RegistrationTime).ToString(New CultureInfo("en-GB")) & "'''</span> || " & nDays & " day(s), " & nHours & " hour(s), " & nMinutes & " minute(s), " & nSeconds & " second(s)"
+            ElseIf Citizen.Id = 104 Then 'TODO: Look into having a method so public users can link to their wiki pages if different (like mine)
+                outText = outText & vbNewLine & "|-" & vbNewLine & "| " & Citizen.Id & " || [[User:Chris|" & Citizen.Name & "]] || " & UnixTimestampToDateTime(Citizen.RegistrationTime).ToString(New CultureInfo("en-GB")) & " || " & nDays & " day(s), " & nHours & " hour(s), " & nMinutes & " minute(s), " & nSeconds & " second(s)"
+            Else
+                outText = outText & vbNewLine & "|-" & vbNewLine & "| " & Citizen.Id & " || [[User:" & Citizen.Name.Replace(" ", "_") & "|" & Citizen.Name & "]] || " & UnixTimestampToDateTime(Citizen.RegistrationTime).ToString(New CultureInfo("en-GB")) & " || " & nDays & " day(s), " & nHours & " hour(s), " & nMinutes & " minute(s), " & nSeconds & " second(s)"
+            End If
+        Next
 
-            Dim outText As String = Replace(My.Resources.WikiText1a, "{date}", Wiki.CitListLastUpdate.ToString(New CultureInfo("en-GB")))
+        outText = outText & vbNewLine & My.Resources.WikiText1b
 
-            For n = 1 To UserAttribute.GetUpperBound(0)
-                If UserAttribute(n).Name = "" Then GoTo Skip3
-                'Generate online time string
-                Dim nTimeInSeconds As Long, nHours As Long, nMinutes As Long, nSeconds As Long, nDays As Long
-                nTimeInSeconds = UserAttribute(n).OnlineTime
-                nDays = nTimeInSeconds \ 86400
-                nHours = (nTimeInSeconds \ 3600) - nDays * 24
-                nTimeInSeconds = nTimeInSeconds Mod 3600
-                nMinutes = nTimeInSeconds \ 60
-                nSeconds = nTimeInSeconds Mod 60
+        '  Dim objWriter2 As System.IO.TextWriter = New System.IO.StreamWriter("e:/tmp.txt", False)
+        '  objWriter2.Write(outText)
+        '  objWriter2.Close()
+        '  Exit Sub
 
-                'Add column to output text
-                If DateTime.Now.Subtract(UnixTimestampToDateTime(UserAttribute(n).RegistrationTime)).TotalDays < 30 Then
-                    outText = outText & vbNewLine & "|-" & vbNewLine & "| " & UserAttribute(n).Id & " || [[User:" & UserAttribute(n).Name.Replace(" ", "_") & "|" & UserAttribute(n).Name & "]] || <span style=""color:red"">'''" & UnixTimestampToDateTime(UserAttribute(n).RegistrationTime).ToString(New CultureInfo("en-GB")) & "'''</span> || " & nDays & " day(s), " & nHours & " hour(s), " & nMinutes & " minute(s), " & nSeconds & " second(s)"
-                ElseIf UserAttribute(n).Id = 104 Then 'TODO: Look into having a method so public users can link to their wiki pages if different (like mine)
-                    outText = outText & vbNewLine & "|-" & vbNewLine & "| " & UserAttribute(n).Id & " || [[User:Chris|" & UserAttribute(n).Name & "]] || " & UnixTimestampToDateTime(UserAttribute(n).RegistrationTime).ToString(New CultureInfo("en-GB")) & " || " & nDays & " day(s), " & nHours & " hour(s), " & nMinutes & " minute(s), " & nSeconds & " second(s)"
-                Else
-                    outText = outText & vbNewLine & "|-" & vbNewLine & "| " & UserAttribute(n).Id & " || [[User:" & UserAttribute(n).Name.Replace(" ", "_") & "|" & UserAttribute(n).Name & "]] || " & UnixTimestampToDateTime(UserAttribute(n).RegistrationTime).ToString(New CultureInfo("en-GB")) & " || " & nDays & " day(s), " & nHours & " hour(s), " & nMinutes & " minute(s), " & nSeconds & " second(s)"
-                End If
-Skip3:
-            Next
-
-            outText = outText & vbNewLine & My.Resources.WikiText1b
-
-            '  Dim objWriter2 As System.IO.TextWriter = New System.IO.StreamWriter("e:/tmp.txt", False)
-            '  objWriter2.Write(outText)
-            '  objWriter2.Close()
-            '  Exit Sub
-
-
-
-            'Inherits Bot
-            ' Firstly make Site object, specifying site's URL and your bot account
-            Dim vpWiki As New DotNetWikiBot.Site("http://wiki.virtualparadise.org", Wiki.Username, Wiki.Password)
-            ' Then make Page object, specifying site and page title in constructor
-            Dim p As New DotNetWikiBot.Page(vpWiki, "List_of_citizens")
-            ' Load actual page text from live wiki
-            p.Load()
-            ' Save "Art" article's text back to live wiki with specified comment
-            p.Save(outText, "Auto-update of citizen list", True)
-        Catch ex As Exception
-            info("EXCEPTION: " & ex.Message)
-            Exit Sub
-        End Try
-        info("Citizen list updated.")
+        'Inherits Bot
+        ' Firstly make Site object, specifying site's URL and your bot account
+        Dim vpWiki As New DotNetWikiBot.Site("http://wiki.virtualparadise.org", Wiki.Username, Wiki.Password)
+        ' Then make Page object, specifying site and page title in constructor
+        Dim p As New DotNetWikiBot.Page(vpWiki, "List_of_citizens")
+        ' Load actual page text from live wiki
+        p.Load()
+        ' Save "Art" article's text back to live wiki with specified comment
+        p.Save(outText, "Auto-update of citizen list", True)
     End Sub
 
     Sub UpdateStatisticsLog()

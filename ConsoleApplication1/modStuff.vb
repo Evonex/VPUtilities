@@ -80,6 +80,8 @@ Module modStuff
     End Structure
     Structure structWiki
         Dim CitListLastUpdate As DateTime
+        Dim CitListPolling As Boolean
+        Dim CitListPollTarget As Integer
         Dim Username As String
         Dim Password As String
     End Structure
