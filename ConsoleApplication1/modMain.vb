@@ -345,7 +345,7 @@ Module modMain
         If Not Options.EnableMapUpdates Then Return
 
         'If nessecary, update map marker location
-        If Not User.MovedSinceLastMarkerUpdate Or User.Session = 0 Or User.MarkerObjectID = -1 Then Return
+        If Not User.MovedSinceLastMarkerUpdate OrElse User.Session = 0 OrElse User.MarkerObjectID = -1 Then Return
 
         User.MovedSinceLastMarkerUpdate = False
 
@@ -406,7 +406,7 @@ Module modMain
 
         'Set bot owner
         'TODO: Use code from chatlink for multiple owners
-        If newUser.Id = 104 Or newUser.Name = "Chris D" Then
+        If newUser.Id = 104 OrElse newUser.Name = "Chris D" Then
             Bot.Owner = newUser.Session
             info("Bot owner detected. Session: " & Bot.Owner)
         End If
@@ -419,7 +419,7 @@ Module modMain
         Dim User = FindUser(eventData.Session)
         If User Is Nothing Then Return
 
-        If User.X <> eventData.X Or User.Y <> eventData.Y Or User.Z <> eventData.Z Or User.Yaw <> eventData.Yaw Then
+        If User.X <> eventData.X OrElse User.Y <> eventData.Y OrElse User.Z <> eventData.Z OrElse User.Yaw <> eventData.Yaw Then
 
             If User.X = eventData.X And User.Y = eventData.Y And User.Z = eventData.Z Then
                 'Ignore small changes in YAW
