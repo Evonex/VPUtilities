@@ -78,27 +78,27 @@ Module modStuff
         Dim UserActivity As String
         '  Dim ObjectStatsBuffer As String
     End Structure
-    Structure structWiki
-        Dim CitListLastUpdate As DateTime
-        Dim CitListPolling As Boolean
-        Dim CitListPollTarget As Integer
-        Dim Username As String
-        Dim Password As String
-    End Structure
+    Class stateWiki
+        Public CitListLastUpdate As DateTime
+        Public CitListPolling As Boolean
+        Public CitListPollTarget As Integer
+        Public Username As String
+        Public Password As String
+    End Class
     Public ConfigINI As New IniFile
 
-    Public Bot As objBot
-    Public Users As List(Of objUser)
-    Public Citizens As List(Of UserAttributes)
-    Public Queries As List(Of VpObject)
-    Public Groups As List(Of VpObject)
-    Public Mirrors As List(Of VpObject)
+    Public Bot As objBot = New objBot
+    Public Wiki As stateWiki = New stateWiki
+    Public Users As List(Of objUser) = New List(Of objUser)
+    Public Citizens As List(Of UserAttributes) = New List(Of UserAttributes)
+    Public Queries As List(Of VpObject) = New List(Of VpObject)
+    Public Groups As List(Of VpObject) = New List(Of VpObject)
+    Public Mirrors As List(Of VpObject) = New List(Of VpObject)
 
     Dim LastWriteLine As String
     Public Marker(31) As Integer 'Contains the querydata array index of each marker
     Public Options As structOptions
     Public VPStats As structStatistics
-    Public Wiki As structWiki
     'Public World() As structWorld
     'Public WorldAttributes() As structWorldAttribs
 

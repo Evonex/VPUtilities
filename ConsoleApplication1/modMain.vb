@@ -48,7 +48,7 @@ Module modMain
                         info("Bot is now active. Use commands in-world to control.")
 
                     Case connectionState.Connected
-                        Bot.Instance.Wait(0)
+                        Bot.Instance.Wait(25)
                 End Select
 
                 ' Update statistics
@@ -74,8 +74,8 @@ Module modMain
         If Options.EnableStatisticsLogging Then SaveStatisticsLog()
 
         info("Saving logs...")
-        objWriter.Close() : objWriter.Dispose()
-        objWriterChat.Close() : objWriterChat.Dispose()
+        objWriter.Close()
+        objWriterChat.Close()
 
         'Delete all the marker objects
         If Options.EnableMapUpdates Then
@@ -90,6 +90,8 @@ Module modMain
                 Bot.Instance.Wait(100)
             Next
         End If
+
+        Bot.Instance.Dispose()
     End Sub
 
     Sub LoadConfig()
@@ -227,7 +229,7 @@ Module modMain
                 Case "coords"
                     vpSay("Coordinates: " & User.X & " " & User.Y & " " & User.Z, User.Session)
                 Case "exit"
-                    If User.Session = Bot.Owner Then EndProgram()
+                    If User.Session = Bot.Owner Then Exiting = True
                 Case "freeze"
                     If User.Session = Bot.Owner And eventData.Message.Length > 10 Then
                         Dim CmdSplit() As String
@@ -284,6 +286,7 @@ Module modMain
         If User IsNot Nothing Then
             User.MarkerObjectID = objectData.Id
             User.MarkerPending = False
+            info("Marker successfully created for " & User.Name)
         End If
         '   Console.WriteLine(User(objectData.ReferenceNumber).Name & ": " & objectData.ReferenceNumber)
     End Sub
@@ -293,7 +296,7 @@ Module modMain
         If obj.Action.Contains("name avmarker") Then
             Dim markerUser = FindUserByName(obj.Description)
 
-            If markerUser Is Nothing Or markerUser.MarkerObjectID <> obj.Id Then
+            If markerUser Is Nothing OrElse markerUser.MarkerObjectID <> obj.Id Then
                 info("Queued delete of old marker for " & obj.Description)
                 Bot.Instance.DeleteObject(obj)
 
@@ -317,7 +320,7 @@ Module modMain
         Randomize()
 
         ' Skip users that already have markers or are waiting for them
-        If User.MarkerObjectID <> -1 Or User.MarkerPending Then Return
+        If User.MarkerObjectID <> -1 OrElse User.MarkerPending Then Return
 
         ' No markers for bots, except for [Cat]
         If User.Name.Substring(0, 1) = "[" And User.Name <> "[Cat]" Then Return
@@ -476,7 +479,7 @@ UpdateUserArray:
         If Queries Is Nothing Then Return
 
         ' Check if MapTile was clicked
-        Dim MapTile As VpObject
+        Dim MapTile As VpObject = Nothing
         For Each Q In Queries
             If Q.Id = objectId Then
                 MapTile = Q
@@ -635,7 +638,6 @@ UpdateUserArray:
 
     Private Sub vpnet_EventUserAttributes(ByVal sender As VpNet.Core.Instance, ByVal userAttributes As VpNet.Core.Structs.UserAttributes)
         Citizens.Add(userAttributes)
-        Wiki.CitListLastUpdate = DateTime.UtcNow
     End Sub
 
     Sub PollCitList()
@@ -648,13 +650,16 @@ UpdateUserArray:
                 Bot.Instance.UserAttributesById(count + Wiki.CitListPollTarget)
             Next
 
+            Wiki.CitListLastUpdate = DateTime.UtcNow
             Wiki.CitListPollTarget += 25
+            info(String.Format("Citizen poll: {0} found, 25 more to go", Citizens.Count))
             Return
         End If
 
         ' Assume after a 30 second timeout of no further updates that all citizens have
         ' been collected. Begins upload to wiki
         If DateTime.Now.Subtract(Wiki.CitListLastUpdate).TotalSeconds >= 30 Then
+            info("Citizen poll: Timed out, uploading gathered data to wiki")
             Wiki.CitListPolling = False
             UploadWikiCitizenList()
         End If
@@ -673,6 +678,11 @@ UpdateUserArray:
     End Sub
 
     Sub UploadWikiCitizenList()
+        If Citizens.Count = 0 Then
+            info("Cannot upload to wiki as Citizen list is empty (did polling go wrong?)")
+            Return
+        End If
+
         'Save the last wiki update time
         ConfigINI.SetKeyValue("Wiki", "CitListLastUpdate", Wiki.CitListLastUpdate.ToString(New CultureInfo("en-GB")))
         ConfigINI.Save(ConfigPath)
@@ -716,6 +726,8 @@ UpdateUserArray:
         p.Load()
         ' Save "Art" article's text back to live wiki with specified comment
         p.Save(outText, "Auto-update of citizen list", True)
+        info("List of Citizens updated on wiki")
+        Citizens.Clear()
     End Sub
 
     Sub UpdateStatisticsLog()
