@@ -660,11 +660,7 @@ UpdateUserArray:
             UploadWikiCitizenList()
         Else
             Wiki.CitListPollTarget += 1
-            Bot.Instance.UserAttributesById(Wiki.CitListPollTarget) ' Conviniently, this skips the 0 user on first batch
-
-            If Wiki.CitListPollTarget Mod 25 = 0 Then
-                info(String.Format("Citizen poll: {0} found so far", Citizens.Count))
-            End If
+            Bot.Instance.UserAttributesById(Wiki.CitListPollTarget)
         End If
     End Sub
 
