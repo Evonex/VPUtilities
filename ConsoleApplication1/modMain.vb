@@ -61,6 +61,10 @@ Module modMain
                 If Options.EnableWikiUpdates Then
                     PollCitList()
                 End If
+
+                ' Heartbeat & report
+                Dim Title = If(DateTime.Now.Second Mod 2 = 0, "Tick", "Tock")
+                Console.Title = "VPUtilities - " & Title
             End While
 
             EndProgram() 'End the program
