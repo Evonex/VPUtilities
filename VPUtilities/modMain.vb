@@ -59,7 +59,11 @@ Module modMain
 
                 ' Update cit list
                 If Options.EnableWikiUpdates Then
-                    PollCitList()
+                    If Wiki.CitListPolling Then
+                        PollCitList()
+                    ElseIf DateTime.Now.Subtract(Wiki.CitListLastUpdate).TotalDays >= 14 Then
+                        UpdateWikiCitizenList()
+                    End If
                 End If
 
                 ' Heartbeat & report
