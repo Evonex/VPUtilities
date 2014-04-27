@@ -25,7 +25,7 @@ Module modMain
     Dim Exiting As Boolean
     Dim SpinnyObj As VpObject
     Dim SpinnyD As Boolean
-    
+
     Sub Main()
         Try
             LoadConfig()
@@ -259,7 +259,10 @@ Module modMain
                 Case "updatecitlist"
                     If User.Session <> Bot.Owner Then Exit Select
                     UpdateWikiCitizenList()
-
+                Case "query" 'Re-queries the area, deletes existing avmarkers that are not in use, also resets mapobject
+                    If User.Session <> Bot.Owner Then Exit Select
+                    CheckMarkers()
+                    vpSay("Re-querying the area for avmarkers and mapobject.", User.Session)
                 Case "add mirror point"
                     vpSay("Command not implemented.", User.Session) : Exit Select
 #If False Then ' Dead code
@@ -305,7 +308,7 @@ Module modMain
             Dim markerUser = FindUserByName(obj.Description)
 
             If markerUser Is Nothing OrElse markerUser.MarkerObjectID <> obj.Id Then
-                info("Queued delete of old marker for " & obj.Description)
+                info("Queued delete of old marker for " & obj.Description) 'TODO: "Queued delete"? Does the SDK not delete immediately?
                 Bot.Instance.DeleteObject(obj)
 
                 Return
