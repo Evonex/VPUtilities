@@ -230,7 +230,9 @@ Module modMain
             If eventData.Message.Substring(2, eventData.Message.Length - 2).Contains(" ") = True Then
                 SelectMsg = SelectMsg.Substring(0, SelectMsg.IndexOf(" "))
             End If
-
+            
+ 'TODO: Click modes, can be disabled or enabled, and set to different modes. Example: Click an object you just built for random rotation / copy-paste action / etc
+            
             Select Case SelectMsg
                 Case "version"
                     vpSay("VP-Utilities Bot by Chris Daxon.", User.Session)
@@ -460,6 +462,8 @@ UpdateUserArray:
     End Sub
 
     Private Sub vpnet_EventAvatarDelete(ByVal sender As VpNet.Core.Instance, ByVal eventData As VpNet.Core.Structs.Avatar)
+                ChatLogAppend("[" & DateTime.UtcNow.ToString(New CultureInfo("en-GB")) & "] EXITS: " & eventData.Name & ", " & eventData.Id & ", " & eventData.Session)
+                
         Dim User = FindUser(eventData.Session)
         If User Is Nothing Then Return
 
@@ -473,7 +477,6 @@ UpdateUserArray:
         Bot.Instance.DeleteObject(markerObject)
 
         Users.Remove(User)
-        ChatLogAppend("[" & DateTime.UtcNow.ToString(New CultureInfo("en-GB")) & "] EXITS: " & User.Name & ", " & User.Id & ", " & User.Session)
     End Sub
 
     Private Sub vpnet_EventObjectClick(ByVal sender As VpNet.Core.Instance, ByVal sessionId As Integer, ByVal objectId As Integer, ByVal clickHitX As Single, ByVal clickHitY As Single, ByVal clickHitZ As Single)
